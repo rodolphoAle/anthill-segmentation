@@ -1,0 +1,25 @@
+__pycache__/utils.cpython-313.pyc
+app/__pycache__/__init__.cpython-313.pyc
+app/__pycache__/config.cpython-313.pyc
+app/__pycache__/models.cpython-313.pyc
+app/__pycache__/routes.cpython-313.pyc
+app/__pycache__/token_blacklist.cpython-313.pyc
+processor/__pycache__/base_processor.cpython-313.pyc
+processor/__pycache__/processamento_servicos.cpython-313.pyc
+processor/__pycache__/thread_runner.cpython-313.pyc
+
+.idea/
+.vscode/
+*.pyc
+__pycache__/
+# Ignorar arquivos compilados do Python
+__pycache__/
+*.pyc
+*.pyo
+
+*.env
+*.rar
+.env
+*.pth
+**/wtf.json
+**/credentials.json
