@@ -1,4 +1,4 @@
-# ── CUDA base image with Python 3.11 ─────────────────────────────────
+#  CUDA base image with Python 3.11 
 FROM nvidia/cuda:12.4.1-cudnn-runtime-ubuntu22.04
 
 # Prevent .pyc files, enable unbuffered stdout/stderr, and hint CUDA
@@ -9,7 +9,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
     TZ=America/Sao_Paulo
 
-# ── Install Python 3.11 + system dependencies ───────────────────────
+#  Install Python 3.11 + system dependencies 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
        software-properties-common \
@@ -24,12 +24,12 @@ RUN apt-get update \
 
 WORKDIR /app
 
-# ── Install PyTorch with CUDA 12.4 support ───────────────────────────
+#  Install PyTorch with CUDA 12.4 support 
 RUN pip install --no-cache-dir \
     torch torchvision \
     --index-url https://download.pytorch.org/whl/cu124
 
-# ── Install remaining Python dependencies ────────────────────────────
+#  Install remaining Python dependencies 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
