@@ -44,7 +44,7 @@ class SegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         self._augmentations = augmentations
         self._pairs: list[tuple[Path, Path]] = self._match_pairs()
 
-    # ── private ──────────────────────────────────────────────────────
+    #  private 
 
     def _match_pairs(self) -> list[tuple[Path, Path]]:
         """Match each RGB image to its corresponding label mask."""
@@ -67,7 +67,7 @@ class SegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
                 pairs.append((rgb_file, matched[0]))
         return pairs
 
-    # ── Dataset interface ────────────────────────────────────────────
+    #  Dataset interface 
 
     def __len__(self) -> int:
         return len(self._pairs)

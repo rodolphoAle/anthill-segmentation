@@ -34,7 +34,7 @@ from app.core.exceptions import DatasetNotFoundError, FolderNotFoundError
 from app.domain.protocols import StorageClientProtocol
 
 
-# ── Result dataclass ─────────────────────────────────────────────────
+#  Result dataclass 
 
 @dataclass
 class ValidationMetrics:
@@ -49,7 +49,7 @@ class ValidationMetrics:
     per_image_dice: list[float] = field(default_factory=list)
 
 
-# ── Service ──────────────────────────────────────────────────────────
+#  Service 
 
 class ValidationService:
     """Streams validation images from Drive and evaluates the model.
@@ -82,7 +82,7 @@ class ValidationService:
         self._output_dir = Path(output_dir or settings.validation_output_dir)
         self._transform = transforms.Compose([transforms.PILToTensor()])
 
-    # ── folder navigation ────────────────────────────────────────────
+    #  folder navigation 
 
     async def _resolve_subfolder_id(
         self, parent_id: str, *names: str
@@ -97,7 +97,7 @@ class ValidationService:
             current_id = folder_id
         return current_id
 
-    # ── sync helpers (run inside thread pool) ────────────────────────
+    #  sync helpers (run inside thread pool) 
 
     def _predict_sync(self, image: Image.Image) -> np.ndarray:
         tensor = (
@@ -120,7 +120,7 @@ class ValidationService:
         mask_img = Image.fromarray((pred_mask * 255).astype(np.uint8))
         mask_img.save(self._output_dir / f"{filename_stem}_mask.png")
 
-    # ── metric helpers (pure functions) ─────────────────────────────
+    #  metric helpers (pure functions) 
 
     @staticmethod
     def _iou(pred: np.ndarray, target: np.ndarray, cls: int) -> float:
@@ -142,7 +142,7 @@ class ValidationService:
             return 1.0 if p.sum() == 0 else 0.0
         return numerator / denominator
 
-    # ── pair matching ────────────────────────────────────────────────
+    #  pair matching 
 
     @staticmethod
     def _match_pairs(
@@ -161,7 +161,7 @@ class ValidationService:
                 pairs.append((rgb, matched[0]))
         return pairs
 
-    # ── public async API ─────────────────────────────────────────────
+    #  public async API 
 
     async def run(self, base_folder_id: str) -> ValidationMetrics:
         """Stream-validate all pairs in ``validacao/`` and return metrics.

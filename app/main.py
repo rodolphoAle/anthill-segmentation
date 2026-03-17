@@ -113,7 +113,7 @@ async def main() -> None:
         settings.pipeline_mode,
     )
 
-    # ── Build shared services (Dependency Injection) ─────────────────
+    #  Build shared services (Dependency Injection) 
     drive_client = GoogleDriveClient(
         credentials_path=settings.google_credentials_path,
     )
@@ -126,7 +126,7 @@ async def main() -> None:
     training_service = TrainingService(model=model)
     logger.info("Using device: {}", training_service.device)
 
-    # ── Dispatch ─────────────────────────────────────────────────────
+    #  Dispatch 
     if settings.pipeline_mode == "validate":
         await _run_validate(drive_client, training_service)
     else:

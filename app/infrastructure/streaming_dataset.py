@@ -54,7 +54,7 @@ class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         self._download_fn = download_fn
         self._augmentations = augmentations
 
-    # ── Dataset interface ────────────────────────────────────────────
+    #  Dataset interface 
 
     def __len__(self) -> int:
         return len(self._pairs)

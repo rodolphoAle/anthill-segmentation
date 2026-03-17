@@ -14,31 +14,31 @@ from pydantic_settings import BaseSettings # pyright: ignore[reportMissingImport
 class Settings(BaseSettings):
     """Immutable application settings loaded from environment / .env."""
 
-    # ── General ──────────────────────────────────────────────────────
+    #  General 
     app_name: str = "UNet Segmentation Pipeline"
     debug: bool = False
 
-    # ── Google Drive ─────────────────────────────────────────────────
+    #  Google Drive 
     google_credentials_path: str = "credentials.json"
     base_folder_id: str = "1slS6V7OWBaBny7v94K3Vx9eGHp7lph91"
 
-    # ── Model ────────────────────────────────────────────────────────
+    #  Model 
     model_save_path: str = "u_net.pth"
     best_model_params_path: str = "best_model_params.pth"
     n_channels: int = 3
     n_classes: int = 2
 
-    # ── Training hyper-parameters ────────────────────────────────────
+    #  Training hyper-parameters 
     batch_size: int = 4
     learning_rate: float = 0.001
     num_epochs: int = 20
     num_workers: int = 2
 
-    # ── Data ─────────────────────────────────────────────────────────
+    #  Data 
     data_mode: str = "online"  # "online" | "local"
     local_data_dir: str = "data"
 
-    # ── Pipeline mode ─────────────────────────────────────────────────
+    #  Pipeline mode 
     # "train"    → stream training data, train model, save weights
     # "validate" → load saved weights, stream validation data, report metrics
     pipeline_mode: str = "train"

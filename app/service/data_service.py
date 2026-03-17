@@ -26,7 +26,7 @@ from app.infrastructure.segmentation_dataset import SegmentationDataset
 from app.infrastructure.streaming_dataset import StreamingSegmentationDataset
 
 
-# ── Transform factories (Single Responsibility) ─────────────────────
+#  Transform factories (Single Responsibility) 
 
 def create_train_transforms() -> transforms.Compose:
     """Augmentation pipeline applied during training."""
@@ -44,7 +44,7 @@ def create_val_transforms() -> transforms.Compose:
     ])
 
 
-# ── Service ──────────────────────────────────────────────────────────
+#  Service 
 
 class DataService:
     """Stateless async service for dataset operations.
@@ -61,7 +61,7 @@ class DataService:
     ) -> None:
         self._storage_client = storage_client
 
-    # ── remote download ──────────────────────────────────────────────
+    #  remote download 
 
     async def _resolve_subfolder_id(
         self,
@@ -155,7 +155,7 @@ class DataService:
 
         return paths
 
-    # ── DataLoader creation ──────────────────────────────────────────
+    #  DataLoader creation 
 
     async def create_dataloaders(
         self,
@@ -206,7 +206,7 @@ class DataService:
         )
         return train_loader, val_loader
 
-    # ── Streaming DataLoaders (no disk writes) ───────────────────────
+    #  Streaming DataLoaders (no disk writes) 
 
     @staticmethod
     def _match_remote_pairs(

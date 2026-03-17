@@ -1,0 +1,19 @@
+# -- Core -------------------------------------------------------------
+pydantic-settings>=2.6.0
+watchfiles>=1.0.0
+
+# -- Logging ----------------------------------------------------------
+loguru>=0.7.3
+
+# -- ML / Deep Learning ----------------------------------------------
+# torch + torchvision are installed separately in the Dockerfile
+# with the correct CUDA index. Do NOT list them here to avoid
+# overwriting the GPU build with a CPU-only wheel.
+numpy>=2.0.0
+pillow>=11.0.0
+matplotlib>=3.9.0
+
+# -- Google Drive -----------------------------------------------------
+google-api-python-client>=2.100.0
+google-auth>=2.20.0
+google-auth-httplib2>=0.2.0
