@@ -14,12 +14,12 @@ A estrutura de pastas esperada no Google Drive é:
 
 ```
 <pasta raiz>
-├── treino/
-│   ├── rgb/         ← imagens RGB de treinamento
-│   └── labels/      ← máscaras de segmentação (.png)
-└── validacao/
-    ├── rgb/         ← imagens RGB de validação
-    └── labels/      ← máscaras de segmentação (.png)
+├ treino/
+│   ├ rgb/         ← imagens RGB de treinamento
+│   └ labels/      ← máscaras de segmentação (.png)
+└ validacao/
+    ├ rgb/         ← imagens RGB de validação
+    └ labels/      ← máscaras de segmentação (.png)
 ```
 
 ---
@@ -61,22 +61,22 @@ A estrutura de pastas esperada no Google Drive é:
 
 ```
 app/
-├── core/
-│   ├── config.py              ← configurações via variáveis de ambiente
-│   ├── exceptions.py          ← exceções de domínio
-│   └── logging_config.py      ← configuração de logs (loguru)
-├── domain/
-│   ├── protocols.py           ← contratos (StorageClientProtocol)
-│   └── unet.py                ← arquitetura da U-Net
-├── infrastructure/
-│   ├── google_drive_client.py ← cliente assíncrono do Google Drive
-│   ├── segmentation_dataset.py   ← dataset para arquivos locais
-│   └── streaming_dataset.py      ← dataset streaming (sem disco)
-├── service/
-│   ├── data_service.py        ← criação de DataLoaders (streaming)
-│   ├── training_service.py    ← loop de treino e avaliação
-│   └── validation_service.py  ← validação com métricas e salvamento
-└── main.py                    ← dispatcher (train / validate)
+├ core/
+│   ├ config.py              ← configurações via variáveis de ambiente
+│   ├ exceptions.py          ← exceções de domínio
+│   └ logging_config.py      ← configuração de logs (loguru)
+├ domain/
+│   ├ protocols.py           ← contratos (StorageClientProtocol)
+│   └ unet.py                ← arquitetura da U-Net
+├ infrastructure/
+│   ├ google_drive_client.py ← cliente assíncrono do Google Drive
+│   ├ segmentation_dataset.py   ← dataset para arquivos locais
+│   └ streaming_dataset.py      ← dataset streaming (sem disco)
+├ service/
+│   ├ data_service.py        ← criação de DataLoaders (streaming)
+│   ├ training_service.py    ← loop de treino e avaliação
+│   └ validation_service.py  ← validação com métricas e salvamento
+└ main.py                    ← dispatcher (train / validate)
 
 run_training.py    ← ponto de entrada para treinamento
 run_validation.py  ← ponto de entrada para validação
