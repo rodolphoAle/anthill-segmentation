@@ -1,0 +1,339 @@
+"""Async service for dataset preparation and DataLoader creation.
+
+Responsibilities
+----------------
+* Download images from a remote storage backend (Google Drive, etc.)
+  to the local filesystem.
+* Create PyTorch ``DataLoader`` instances for training and validation.
+
+The service depends on :class:`~app.domain.protocols.StorageClientProtocol`
+so it is decoupled from any concrete storage implementation
+(**Dependency Inversion**).
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import torchvision.transforms.v2 as transforms
+from loguru import logger
+from torch.utils.data import DataLoader
+
+from app.core.config import settings
+from app.core.exceptions import DatasetNotFoundError, FolderNotFoundError
+from app.domain.protocols import StorageClientProtocol
+from app.infrastructure.segmentation_dataset import SegmentationDataset
+from app.infrastructure.streaming_dataset import StreamingSegmentationDataset
+
+
+# ── Transform factories (Single Responsibility) ─────────────────────
+
+def create_train_transforms() -> transforms.Compose:
+    """Augmentation pipeline applied during training."""
+    return transforms.Compose([
+        transforms.RandomHorizontalFlip(),
+        transforms.RandomRotation(30),
+        transforms.PILToTensor(),
+    ])
+
+
+def create_val_transforms() -> transforms.Compose:
+    """Deterministic pipeline applied during validation / inference."""
+    return transforms.Compose([
+        transforms.PILToTensor(),
+    ])
+
+
+# ── Service ──────────────────────────────────────────────────────────
+
+class DataService:
+    """Stateless async service for dataset operations.
+
+    Args:
+        storage_client: An object satisfying
+            :class:`~app.domain.protocols.StorageClientProtocol`.
+            Required when ``data_mode == "online"``.
+    """
+
+    def __init__(
+        self,
+        storage_client: StorageClientProtocol | None = None,
+    ) -> None:
+        self._storage_client = storage_client
+
+    # ── remote download ──────────────────────────────────────────────
+
+    async def _resolve_subfolder_id(
+        self,
+        parent_id: str,
+        *names: str,
+    ) -> str:
+        """Walk a chain of folder names and return the final folder id."""
+        if self._storage_client is None:
+            raise DatasetNotFoundError(
+                "No storage client configured for online mode"
+            )
+
+        current_id = parent_id
+        for name in names:
+            folder_id = await self._storage_client.get_folder_id(
+                name, current_id,
+            )
+            if folder_id is None:
+                raise FolderNotFoundError(
+                    f"Folder '{name}' not found under parent '{current_id}'"
+                )
+            current_id = folder_id
+        return current_id
+
+    async def _download_folder_contents(
+        self,
+        folder_id: str,
+        local_dir: Path,
+        extensions: list[str],
+    ) -> int:
+        """Download every file in *folder_id* to *local_dir*.
+
+        Files that already exist locally are skipped.
+
+        Returns:
+            Number of newly downloaded files.
+        """
+        if self._storage_client is None:
+            raise DatasetNotFoundError(
+                "No storage client configured for online mode"
+            )
+
+        local_dir.mkdir(parents=True, exist_ok=True)
+        files = await self._storage_client.list_files(
+            folder_id, extensions=extensions,
+        )
+
+        downloaded = 0
+        for file_info in files:
+            dest = local_dir / file_info["name"]
+            if dest.exists():
+                continue
+            await self._storage_client.download_file(
+                file_info["id"],
+                destination_path=str(dest),
+            )
+            downloaded += 1
+
+        logger.info(
+            "Downloaded {} new files to {} ({} total on disk)",
+            downloaded,
+            local_dir,
+            len(files),
+        )
+        return downloaded
+
+    async def download_dataset_from_drive(
+        self,
+        base_folder_id: str,
+        destination: str | Path,
+    ) -> dict[str, Path]:
+        """Download train + validation splits from Google Drive.
+
+        Returns:
+            Mapping of ``"<split>_<type>"`` → local directory path.
+        """
+        destination = Path(destination)
+        image_extensions = [".png", ".jpg", ".jpeg", ".tif"]
+        paths: dict[str, Path] = {}
+
+        for split in ("treino", "validacao"):
+            for subfolder in ("rgb", "labels"):
+                remote_id = await self._resolve_subfolder_id(
+                    base_folder_id, split, subfolder,
+                )
+                local_dir = destination / split / subfolder
+                await self._download_folder_contents(
+                    remote_id, local_dir, image_extensions,
+                )
+                paths[f"{split}_{subfolder}"] = local_dir
+
+        return paths
+
+    # ── DataLoader creation ──────────────────────────────────────────
+
+    async def create_dataloaders(
+        self,
+        train_rgb_dir: str | Path,
+        train_labels_dir: str | Path,
+        val_rgb_dir: str | Path,
+        val_labels_dir: str | Path,
+    ) -> tuple[DataLoader[tuple], DataLoader[tuple]]:
+        """Build training and validation ``DataLoader`` instances.
+
+        Raises:
+            DatasetNotFoundError: If either dataset has zero image-mask
+                pairs.
+        """
+        train_dataset = SegmentationDataset(
+            rgb_dir=train_rgb_dir,
+            labels_dir=train_labels_dir,
+            augmentations=create_train_transforms(),
+        )
+        val_dataset = SegmentationDataset(
+            rgb_dir=val_rgb_dir,
+            labels_dir=val_labels_dir,
+            augmentations=create_val_transforms(),
+        )
+
+        if len(train_dataset) == 0:
+            raise DatasetNotFoundError("No training image-mask pairs found")
+        if len(val_dataset) == 0:
+            raise DatasetNotFoundError("No validation image-mask pairs found")
+
+        logger.info(
+            "Datasets ready — {} train / {} val pairs",
+            len(train_dataset),
+            len(val_dataset),
+        )
+
+        train_loader: DataLoader[tuple] = DataLoader(
+            train_dataset,
+            batch_size=settings.batch_size,
+            shuffle=True,
+            num_workers=settings.num_workers,
+        )
+        val_loader: DataLoader[tuple] = DataLoader(
+            val_dataset,
+            batch_size=settings.batch_size,
+            shuffle=False,
+            num_workers=settings.num_workers,
+        )
+        return train_loader, val_loader
+
+    # ── Streaming DataLoaders (no disk writes) ───────────────────────
+
+    @staticmethod
+    def _match_remote_pairs(
+        rgb_files: list[dict[str, str]],
+        label_files: list[dict[str, str]],
+    ) -> list[tuple[dict[str, str], dict[str, str]]]:
+        """Match remote RGB files to their label counterparts by name prefix."""
+        from pathlib import Path as _Path
+
+        pairs: list[tuple[dict[str, str], dict[str, str]]] = []
+        for rgb in sorted(rgb_files, key=lambda f: f["name"]):
+            prefix = "_".join(_Path(rgb["name"]).stem.split("_")[:4])
+            matched = [
+                lf
+                for lf in label_files
+                if _Path(lf["name"]).stem.startswith(prefix)
+            ]
+            if matched:
+                pairs.append((rgb, matched[0]))
+        return pairs
+
+    async def create_streaming_dataloaders_from_drive(
+        self,
+        base_folder_id: str,
+    ) -> tuple[DataLoader[tuple], DataLoader[tuple]]:
+        """Build streaming DataLoaders backed directly by Google Drive.
+
+        File metadata (IDs + names) are fetched upfront; actual image
+        bytes are downloaded on-demand inside each ``__getitem__`` call
+        and released immediately — **nothing is written to disk**.
+
+        The Drive service object inside ``GoogleDriveClient`` is lazily
+        initialised, so each DataLoader worker re-authenticates
+        automatically on first use.  Use ``num_workers=0`` (the default
+        here) to avoid any worker-process pickling concerns.
+
+        Args:
+            base_folder_id: Root Drive folder that contains
+                ``treino/rgb``, ``treino/labels``,
+                ``validacao/rgb``, and ``validacao/labels`` sub-folders.
+
+        Returns:
+            ``(train_loader, val_loader)`` tuple.
+
+        Raises:
+            DatasetNotFoundError: If storage client is not configured or
+                either split has no matched pairs.
+        """
+        if self._storage_client is None:
+            raise DatasetNotFoundError(
+                "No storage client configured for online mode"
+            )
+
+        img_exts = [".png", ".jpg", ".jpeg", ".tif"]
+
+        # Resolve all four remote folder IDs in sequence
+        train_rgb_id = await self._resolve_subfolder_id(
+            base_folder_id, "treino", "rgb"
+        )
+        train_lbl_id = await self._resolve_subfolder_id(
+            base_folder_id, "treino", "labels"
+        )
+        val_rgb_id = await self._resolve_subfolder_id(
+            base_folder_id, "validacao", "rgb"
+        )
+        val_lbl_id = await self._resolve_subfolder_id(
+            base_folder_id, "validacao", "labels"
+        )
+
+        train_rgb_files = await self._storage_client.list_files(
+            train_rgb_id, img_exts
+        )
+        train_lbl_files = await self._storage_client.list_files(
+            train_lbl_id, [".png"]
+        )
+        val_rgb_files = await self._storage_client.list_files(
+            val_rgb_id, img_exts
+        )
+        val_lbl_files = await self._storage_client.list_files(
+            val_lbl_id, [".png"]
+        )
+
+        train_pairs = self._match_remote_pairs(train_rgb_files, train_lbl_files)
+        val_pairs = self._match_remote_pairs(val_rgb_files, val_lbl_files)
+
+        if not train_pairs:
+            raise DatasetNotFoundError(
+                "No training image-mask pairs found on Drive"
+            )
+        if not val_pairs:
+            raise DatasetNotFoundError(
+                "No validation image-mask pairs found on Drive"
+            )
+
+        logger.info(
+            "Streaming datasets ready — {} train / {} val pairs (no disk writes)",
+            len(train_pairs),
+            len(val_pairs),
+        )
+
+        # Pass the synchronous download method so workers never call asyncio
+        download_fn = self._storage_client._sync_download_file  # type: ignore[attr-defined]
+
+        train_dataset = StreamingSegmentationDataset(
+            pairs=train_pairs,
+            download_fn=download_fn,
+            augmentations=create_train_transforms(),
+        )
+        val_dataset = StreamingSegmentationDataset(
+            pairs=val_pairs,
+            download_fn=download_fn,
+            augmentations=create_val_transforms(),
+        )
+
+        # num_workers=0: each item is fetched in the main process, which
+        # is safe and avoids any worker-process serialisation of the Drive
+        # service object.
+        train_loader: DataLoader[tuple] = DataLoader(
+            train_dataset,
+            batch_size=settings.batch_size,
+            shuffle=True,
+            num_workers=0,
+        )
+        val_loader: DataLoader[tuple] = DataLoader(
+            val_dataset,
+            batch_size=settings.batch_size,
+            shuffle=False,
+            num_workers=0,
+        )
+        return train_loader, val_loader
