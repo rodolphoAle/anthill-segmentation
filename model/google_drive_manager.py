@@ -26,13 +26,24 @@ class GoogleDriveManager:
             return None
         return items[0]['id']
 
-    def list_files_in_folder(self, folder_id, extensions=None):
-        query = f"'{folder_id}' in parents and trashed=false"
-        results = self.service.files().list(q=query, fields="files(id, name)").execute()
-        items = results.get('files', [])
-        if extensions:
-            items = [item for item in items if any(item['name'].lower().endswith(ext) for ext in extensions)]
-        return items
+    def list_files_in_folder(self, folder_id):
+        files = []
+        page_token = None
+
+        while True:
+            response = self.service.files().list(
+                q=f"'{folder_id}' in parents",
+                fields="nextPageToken, files(id, name)",
+                pageToken=page_token
+            ).execute()
+
+            files.extend(response.get('files', []))
+            page_token = response.get('nextPageToken')
+
+            if not page_token:
+                break
+
+        return files
 
     def download_file(self, file_id, destination_path=None):
         request = self.service.files().get_media(fileId=file_id)
