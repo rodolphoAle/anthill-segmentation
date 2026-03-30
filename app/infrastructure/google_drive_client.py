@@ -70,12 +70,25 @@ class GoogleDriveClient:
         self, folder_id: str, extensions: list[str] | None = None,
     ) -> list[dict[str, str]]:
         query = f"'{folder_id}' in parents and trashed=false"
-        results = (
-            self.service.files()
-            .list(q=query, fields="files(id, name)")
-            .execute()
-        )
-        items: list[dict[str, str]] = results.get("files", [])
+        items: list[dict[str, str]] = []
+        page_token: str | None = None
+
+        while True:
+            results = (
+                self.service.files()
+                .list(
+                    q=query,
+                    fields="nextPageToken, files(id, name)",
+                    pageSize=1000,
+                    pageToken=page_token,
+                )
+                .execute()
+            )
+            items.extend(results.get("files", []))
+            page_token = results.get("nextPageToken")
+            if not page_token:
+                break
+
         if extensions:
             items = [
                 item
