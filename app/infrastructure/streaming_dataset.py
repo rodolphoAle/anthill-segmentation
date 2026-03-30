@@ -13,6 +13,7 @@ from typing import Callable
 
 import numpy as np
 import torch
+import torchvision.transforms.functional as TF
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import v2 as transforms
@@ -59,6 +60,13 @@ class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
     def __len__(self) -> int:
         return len(self._pairs)
 
+    # Image-only normalization (ImageNet stats) applied after augmentations.
+    _normalize = transforms.Compose([
+        transforms.ToImage(),
+        transforms.ToDtype(torch.float32, scale=True),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+
     def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
         rgb_meta, label_meta = self._pairs[index]
 
@@ -66,15 +74,29 @@ class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         label_buffer = self._download_fn(label_meta["id"])
 
         image = Image.open(rgb_buffer).convert("RGB")
-        mask = Image.open(label_buffer)
+        # Open mask as RGB to preserve the red channel (anthill annotation)
+        mask = Image.open(label_buffer).convert("RGB")
 
+        # Apply geometric augmentations jointly (flip, rotate, etc.)
         if self._augmentations:
             image, mask = self._augmentations(image, mask)
 
-        mask_tensor = torch.tensor(np.array(mask), dtype=torch.long)
-        mask_tensor = torch.clamp(mask_tensor, 0, 1)
-        # PILToTensor adds a channel dim [1, H, W] — CrossEntropyLoss needs [H, W]
-        if mask_tensor.dim() == 3:
-            mask_tensor = mask_tensor.squeeze(0)
+        # Normalise image to float32 with ImageNet stats — mask is NOT touched
+        image_tensor: torch.Tensor = self._normalize(image)
 
-        return image, mask_tensor
+        mask_arr = np.array(mask)  # (H, W, 3)
+        # Label convention (RGB masks):
+        #   Red   (R>150, G<100, B<100) → class 1 (anthill)
+        #   Black (all channels <  50) → class 0 (background)
+        #   White (all channels > 200) → ignore_index=255 (unlabelled)
+        r, g, b = mask_arr[:, :, 0], mask_arr[:, :, 1], mask_arr[:, :, 2]
+        is_anthill = (r > 150) & (g < 100) & (b < 100)
+        is_background = (r < 50) & (g < 50) & (b < 50)
+
+        label = np.full(mask_arr.shape[:2], 255, dtype=np.int64)  # default: ignore
+        label[is_background] = 0
+        label[is_anthill] = 1
+
+        mask_tensor = torch.tensor(label, dtype=torch.long)
+
+        return image_tensor, mask_tensor

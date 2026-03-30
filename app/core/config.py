@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     #  Training hyper-parameters 
     batch_size: int = 4
     learning_rate: float = 0.001
-    num_epochs: int = 20
+    num_epochs: int = 200
     num_workers: int = 2
 
     #  Data 

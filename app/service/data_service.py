@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import torch
 import torchvision.transforms.v2 as transforms
 from loguru import logger
 from torch.utils.data import DataLoader
@@ -25,22 +26,15 @@ from app.domain.protocols import StorageClientProtocol
 from app.infrastructure.segmentation_dataset import SegmentationDataset
 from app.infrastructure.streaming_dataset import StreamingSegmentationDataset
 
-
-#  Transform factories (Single Responsibility) 
-
 def create_train_transforms() -> transforms.Compose:
-    """Augmentation pipeline applied during training."""
+    """Geometric augmentations applied jointly to image AND mask.
+
+    Must NOT include photometric or dtype transforms (ToImage, Normalize)
+    because those must be applied only to the image, not the mask.
+    """
     return transforms.Compose([
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(30),
-        transforms.PILToTensor(),
-    ])
-
-
-def create_val_transforms() -> transforms.Compose:
-    """Deterministic pipeline applied during validation / inference."""
-    return transforms.Compose([
-        transforms.PILToTensor(),
     ])
 
 
@@ -178,7 +172,7 @@ class DataService:
         val_dataset = SegmentationDataset(
             rgb_dir=val_rgb_dir,
             labels_dir=val_labels_dir,
-            augmentations=create_val_transforms(),
+            augmentations=None,
         )
 
         if len(train_dataset) == 0:
@@ -318,7 +312,7 @@ class DataService:
         val_dataset = StreamingSegmentationDataset(
             pairs=val_pairs,
             download_fn=download_fn,
-            augmentations=create_val_transforms(),
+            augmentations=None,
         )
 
         # num_workers=0: each item is fetched in the main process, which

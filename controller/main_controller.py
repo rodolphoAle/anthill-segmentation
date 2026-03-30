@@ -37,3 +37,8 @@ class MainController:
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
         manager.train(train_loader, val_loader, criterion, optimizer)
+
+
+if __name__ == "__main__":
+    controller = MainController()
+    controller.run_training()

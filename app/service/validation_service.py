@@ -80,7 +80,11 @@ class ValidationService:
         self._device = device
         self._storage = storage_client
         self._output_dir = Path(output_dir or settings.validation_output_dir)
-        self._transform = transforms.Compose([transforms.PILToTensor()])
+        self._transform = transforms.Compose([
+            transforms.ToImage(),
+            transforms.ToDtype(torch.float32, scale=True),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
 
     #  folder navigation 
 
@@ -100,9 +104,7 @@ class ValidationService:
     #  sync helpers (run inside thread pool) 
 
     def _predict_sync(self, image: Image.Image) -> np.ndarray:
-        tensor = (
-            self._transform(image).unsqueeze(0).float().to(self._device)
-        )
+        tensor = self._transform(image).unsqueeze(0).to(self._device)
         self._model.eval()
         with torch.no_grad():
             output = self._model(tensor)
