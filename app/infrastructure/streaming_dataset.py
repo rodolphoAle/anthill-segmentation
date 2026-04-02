@@ -19,7 +19,7 @@ from torch.utils.data import Dataset
 from torchvision.transforms import v2 as transforms
 
 
-class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
+class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor, str]]):
     """Segmentation dataset backed purely by remote file IDs.
 
     Each call to ``__getitem__`` fetches the raw bytes for that pair,
@@ -67,7 +67,7 @@ class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor]:
+    def __getitem__(self, index: int) -> tuple[torch.Tensor, torch.Tensor, str]:
         rgb_meta, label_meta = self._pairs[index]
 
         rgb_buffer = self._download_fn(rgb_meta["id"])
@@ -99,4 +99,4 @@ class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor]]):
 
         mask_tensor = torch.tensor(label, dtype=torch.long)
 
-        return image_tensor, mask_tensor
+        return image_tensor, mask_tensor, rgb_meta["name"]

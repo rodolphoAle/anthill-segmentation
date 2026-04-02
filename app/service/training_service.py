@@ -8,12 +8,13 @@ the default thread-pool executor.
 from __future__ import annotations
 
 import asyncio
+import time
 from enum import Enum
 
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from loguru import logger # pyright: ignore[reportMissingImports]
+from loguru import logger  # pyright: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 
 from app.core.config import settings
@@ -61,6 +62,8 @@ class TrainingService:
         self._device = self._resolve_device()
         self._model.to(self._device)
         self._state = TrainingState()
+        if self._device.type == "cuda":
+            torch.backends.cudnn.benchmark = True
 
     #  helpers 
 
@@ -94,28 +97,110 @@ class TrainingService:
         optimizer: optim.Optimizer,
         scheduler: optim.lr_scheduler.ReduceLROnPlateau,
         num_epochs: int,
+        scaler: torch.amp.GradScaler,
     ) -> None:
         best_val_loss = float("inf")
+        # AMP disabled: this UNet has no BatchNorm, so FP16 activations in the
+        # 1024-channel bottleneck can overflow during backward, producing
+        # Inf gradients that clip_grad_norm converts to NaN (Inf * 0 = NaN),
+        # corrupting model weights after just a few updates.  Pure FP32 is safe.
+        use_amp = False
+        total_batches = len(train_loader)
+        log_every = 50  # log every 50 batches regardless of dataset size
 
         for epoch in range(num_epochs):
             self._state.current_epoch = epoch + 1
+            epoch_start = time.monotonic()
 
             # --- train ---
             self._model.train()
             epoch_loss = 0.0
             batch_count = 0
-            for inputs, labels in train_loader:
-                inputs = inputs.to(self._device)
-                labels = labels.to(self._device)
+            last_log_time = time.monotonic()
+
+            for batch_idx, (inputs, labels, names) in enumerate(train_loader):
+                fetch_done = time.monotonic()
+                inputs = inputs.to(self._device, non_blocking=True)
+                labels = labels.to(self._device, non_blocking=True)
+
+                # Skip batches with corrupted data (e.g. failed SSL download)
+                if torch.isnan(inputs).any() or torch.isinf(inputs).any():
+                    logger.warning(
+                        "Epoch {}/{} batch {} — skipping: NaN/Inf in inputs ({})",
+                        epoch + 1, num_epochs, batch_idx + 1, names[0],
+                    )
+                    last_log_time = time.monotonic()
+                    continue
+
+                # Skip batches where every pixel is the ignore class (can happen
+                # after random rotation crops out all valid-label regions).
+                if (labels == 255).all():
+                    logger.warning(
+                        "Epoch {}/{} batch {} — skipping: all pixels are ignore_index ({})",
+                        epoch + 1, num_epochs, batch_idx + 1, names[0],
+                    )
+                    last_log_time = time.monotonic()
+                    continue
 
                 optimizer.zero_grad()
-                outputs = self._model(inputs)
+                with torch.amp.autocast(device_type=self._device.type, enabled=use_amp):
+                    outputs = self._model(inputs)
+
+                if torch.isnan(outputs).any() or torch.isinf(outputs).any():
+                    logger.warning(
+                        "Epoch {}/{} batch {} — skipping: NaN/Inf in model outputs ({})",
+                        epoch + 1, num_epochs, batch_idx + 1, names[0],
+                    )
+                    optimizer.zero_grad()
+                    last_log_time = time.monotonic()
+                    continue
+
                 loss = criterion(outputs, labels)
-                loss.backward()
-                optimizer.step()
+
+                if torch.isnan(loss) or torch.isinf(loss):
+                    logger.warning(
+                        "Epoch {}/{} batch {} — skipping: NaN/Inf loss ({})",
+                        epoch + 1, num_epochs, batch_idx + 1, names[0],
+                    )
+                    optimizer.zero_grad()
+                    last_log_time = time.monotonic()
+                    continue
+
+                scaler.scale(loss).backward()
+                scaler.unscale_(optimizer)
+                torch.nn.utils.clip_grad_norm_(
+                    self._model.parameters(),
+                    max_norm=settings.grad_clip_max_norm,
+                )
+                scaler.step(optimizer)
+                scaler.update()
 
                 epoch_loss += loss.item()
                 batch_count += 1
+                gpu_done = time.monotonic()
+
+                if (batch_idx + 1) % log_every == 0 or batch_idx == 0:
+                    elapsed_epoch = gpu_done - epoch_start
+                    since_last = gpu_done - last_log_time
+                    fetch_ms = (fetch_done - last_log_time) * 1000
+                    gpu_ms = (gpu_done - fetch_done) * 1000
+                    progress_pct = (batch_idx + 1) / total_batches * 100
+                    sample_names = ", ".join(names[:2])
+                    logger.info(
+                        "Epoch {}/{} [{:.1f}%] batch {}/{} | loss: {:.4f} | "
+                        "fetch: {:.0f}ms  gpu: {:.0f}ms  step: {:.1f}s | {}",
+                        epoch + 1,
+                        num_epochs,
+                        progress_pct,
+                        batch_idx + 1,
+                        total_batches,
+                        epoch_loss / batch_count,
+                        fetch_ms,
+                        gpu_ms,
+                        since_last,
+                        sample_names,
+                    )
+                    last_log_time = gpu_done
 
             avg_loss = epoch_loss / max(batch_count, 1)
             self._state.current_loss = avg_loss
@@ -153,18 +238,27 @@ class TrainingService:
         val_loader: DataLoader[tuple],
         criterion: nn.Module,
     ) -> float:
+        # AMP disabled for the same reason as _train_loop: no BatchNorm means
+        # FP16 activations overflow in the bottleneck, producing NaN outputs.
+        # Inference has no backward pass so there is no speed benefit worth
+        # the instability risk.
         self._model.eval()
         total_loss = 0.0
         batch_count = 0
         with torch.no_grad():
-            for inputs, labels in val_loader:
-                inputs = inputs.to(self._device)
-                labels = labels.to(self._device)
+            for inputs, labels, _names in val_loader:
+                inputs = inputs.to(self._device, non_blocking=True)
+                labels = labels.to(self._device, non_blocking=True)
                 outputs = self._model(inputs)
                 loss = criterion(outputs, labels)
+                if torch.isnan(loss) or torch.isinf(loss):
+                    continue
                 total_loss += loss.item()
                 batch_count += 1
-        return total_loss / max(batch_count, 1)
+        if batch_count == 0:
+            logger.warning("Validation loop: all batches produced NaN/Inf loss — val_loss reported as inf")
+            return float("inf")
+        return total_loss / batch_count
 
     def _evaluate_loop(
         self,
@@ -199,14 +293,21 @@ class TrainingService:
         self._state.status = TrainingStatus.PREPARING
         self._state.total_epochs = epochs
 
-        # Weight class 1 (anthill) heavily to counter class imbalance.
-        # Assumes anthill pixels are ~5-10x rarer than background.
-        class_weights = torch.tensor([1.0, 10.0], device=self._device)
+        class_weights = torch.tensor(
+            [settings.class_weight_background, settings.class_weight_anthill],
+            device=self._device,
+        )
         criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=255)
         optimizer = optim.Adam(self._model.parameters(), lr=lr)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", factor=0.5, patience=3
+            optimizer,
+            mode="min",
+            factor=settings.scheduler_factor,
+            patience=settings.scheduler_patience,
         )
+        # GradScaler disabled: AMP is off in _train_loop, so the scaler is a
+        # passthrough kept only to avoid restructuring the training loop.
+        scaler = torch.amp.GradScaler("cuda", enabled=False)
 
         try:
             self._state.status = TrainingStatus.TRAINING
@@ -223,6 +324,7 @@ class TrainingService:
                 optimizer,
                 scheduler,
                 epochs,
+                scaler,
             )
 
             logger.info("Training done. Running final validation…")

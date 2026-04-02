@@ -43,12 +43,19 @@ async def _run_train(
     training_service: TrainingService,
 ) -> None:
     """Stream-train the model and save the resulting weights."""
-    logger.info("Fetching file metadata from Google Drive (train mode)…")
-    train_loader, val_loader = (
-        await data_service.create_streaming_dataloaders_from_drive(
-            base_folder_id=settings.base_folder_id,
+    if settings.data_mode == "online":
+        logger.info("Fetching file metadata from Google Drive (train mode)…")
+        train_loader, val_loader = (
+            await data_service.create_streaming_dataloaders_from_drive(
+                base_folder_id=settings.base_folder_id,
+            )
         )
-    )
+    else:
+        logger.info(
+            "Loading local dataset from '{}' (offline mode)…",
+            settings.local_data_dir,
+        )
+        train_loader, val_loader = await data_service.create_local_dataloaders()
 
     logger.info("Starting training…")
     await training_service.start_training(

@@ -26,15 +26,59 @@ from app.domain.protocols import StorageClientProtocol
 from app.infrastructure.segmentation_dataset import SegmentationDataset
 from app.infrastructure.streaming_dataset import StreamingSegmentationDataset
 
-def create_train_transforms() -> transforms.Compose:
-    """Geometric augmentations applied jointly to image AND mask.
 
-    Must NOT include photometric or dtype transforms (ToImage, Normalize)
-    because those must be applied only to the image, not the mask.
+def _collate_with_names(
+    batch: list[tuple[torch.Tensor, torch.Tensor, str]],
+) -> tuple[torch.Tensor, torch.Tensor, list[str]]:
+    """Custom collate that stacks tensors and keeps filenames as a list."""
+    images = torch.stack([item[0] for item in batch])
+    masks = torch.stack([item[1] for item in batch])
+    names = [item[2] for item in batch]
+    return images, masks, names
+
+
+def create_train_transforms() -> transforms.Compose:
+    """Build geometric + photometric augmentations from settings.
+
+    All transforms that affect spatial layout (flip, rotation) are applied
+    jointly to image AND mask.  ColorJitter is image-only and is appended
+    outside the joint pipeline — the caller in SegmentationDataset.__getitem__
+    applies self._augmentations to both, so ColorJitter must NOT be included
+    here when joint application would corrupt the mask.
+
+    Note: torchvision v2 transforms handle (image, mask) pairs correctly for
+    geometric ops.  ColorJitter is safe on PIL images and is only applied to
+    the image tensor AFTER the joint step via a second transform in the dataset.
+
+    Returns an empty Compose if all augmentations are disabled.
     """
+    transform_list: list[transforms.Transform] = []
+
+    if settings.aug_horizontal_flip:
+        transform_list.append(transforms.RandomHorizontalFlip())
+
+    if settings.aug_vertical_flip:
+        transform_list.append(transforms.RandomVerticalFlip())
+
+    if settings.aug_rotation_degrees > 0:
+        transform_list.append(transforms.RandomRotation(settings.aug_rotation_degrees))
+
+    return transforms.Compose(transform_list)
+
+
+def create_image_only_transforms() -> transforms.Compose | None:
+    """Photometric augmentations applied to the image tensor only (not the mask).
+
+    Returns None if color jitter is disabled, so callers can skip the step.
+    """
+    if not settings.aug_color_jitter:
+        return None
     return transforms.Compose([
-        transforms.RandomHorizontalFlip(),
-        transforms.RandomRotation(30),
+        transforms.ColorJitter(
+            brightness=settings.aug_color_jitter_brightness,
+            contrast=settings.aug_color_jitter_contrast,
+            saturation=settings.aug_color_jitter_saturation,
+        )
     ])
 
 
@@ -168,11 +212,14 @@ class DataService:
             rgb_dir=train_rgb_dir,
             labels_dir=train_labels_dir,
             augmentations=create_train_transforms(),
+            image_only_transforms=create_image_only_transforms(),
+            preload=settings.preload_dataset,
         )
         val_dataset = SegmentationDataset(
             rgb_dir=val_rgb_dir,
             labels_dir=val_labels_dir,
             augmentations=None,
+            preload=settings.preload_dataset,
         )
 
         if len(train_dataset) == 0:
@@ -181,24 +228,74 @@ class DataService:
             raise DatasetNotFoundError("No validation image-mask pairs found")
 
         logger.info(
-            "Datasets ready — {} train / {} val pairs",
+            "Datasets ready — {} train / {} val pairs{}",
             len(train_dataset),
             len(val_dataset),
+            " (preloaded in RAM)" if settings.preload_dataset else "",
         )
+
+        use_pin_memory = torch.cuda.is_available()
+        num_workers = settings.num_workers
+        persistent = num_workers > 0
+        prefetch = 2 if num_workers > 0 else None
 
         train_loader: DataLoader[tuple] = DataLoader(
             train_dataset,
             batch_size=settings.batch_size,
             shuffle=True,
-            num_workers=settings.num_workers,
+            num_workers=num_workers,
+            pin_memory=use_pin_memory,
+            persistent_workers=persistent,
+            prefetch_factor=prefetch,
+            collate_fn=_collate_with_names,
         )
         val_loader: DataLoader[tuple] = DataLoader(
             val_dataset,
             batch_size=settings.batch_size,
             shuffle=False,
-            num_workers=settings.num_workers,
+            num_workers=num_workers,
+            pin_memory=use_pin_memory,
+            persistent_workers=persistent,
+            prefetch_factor=prefetch,
+            collate_fn=_collate_with_names,
         )
         return train_loader, val_loader
+
+    #  Offline (local disk) DataLoaders 
+
+    async def create_local_dataloaders(self) -> tuple[DataLoader[tuple], DataLoader[tuple]]:
+        """Build DataLoaders from local disk using paths configured in settings.
+
+        Expected structure under ``settings.local_data_dir``::
+
+            <local_data_dir>/
+              <train_rgb_subdir>/       ← e.g. training/rgb/rgb
+              <train_labels_subdir>/    ← e.g. training/labels/labels
+              <val_rgb_subdir>/         ← e.g. validation/rgb/rgb
+              <val_labels_subdir>/      ← e.g. validation/labels/labels
+
+        Raises:
+            DatasetNotFoundError: If a required directory does not exist or
+                either split has no matched pairs.
+        """
+        base = Path(settings.local_data_dir)
+        train_rgb = base / settings.train_rgb_subdir
+        train_labels = base / settings.train_labels_subdir
+        val_rgb = base / settings.val_rgb_subdir
+        val_labels = base / settings.val_labels_subdir
+
+        for path in (train_rgb, train_labels, val_rgb, val_labels):
+            if not path.exists():
+                raise DatasetNotFoundError(
+                    f"Required local directory not found: {path}"
+                )
+
+        return await self.create_dataloaders(
+            train_rgb_dir=train_rgb,
+            train_labels_dir=train_labels,
+            val_rgb_dir=val_rgb,
+            val_labels_dir=val_labels,
+        )
 
     #  Streaming DataLoaders (no disk writes) 
 
@@ -315,19 +412,32 @@ class DataService:
             augmentations=None,
         )
 
-        # num_workers=0: each item is fetched in the main process, which
-        # is safe and avoids any worker-process serialisation of the Drive
-        # service object.
+        # num_workers > 0: multiple worker processes download images in
+        # parallel.  GoogleDriveClient resets its service to None when
+        # pickled so each worker re-authenticates lazily on first use.
+        num_workers = settings.num_workers
+        use_pin_memory = torch.cuda.is_available()
+        persistent = num_workers > 0
+        prefetch = 2 if num_workers > 0 else None
+
         train_loader: DataLoader[tuple] = DataLoader(
             train_dataset,
             batch_size=settings.batch_size,
             shuffle=True,
-            num_workers=0,
+            num_workers=num_workers,
+            pin_memory=use_pin_memory,
+            persistent_workers=persistent,
+            prefetch_factor=prefetch,
+            collate_fn=_collate_with_names,
         )
         val_loader: DataLoader[tuple] = DataLoader(
             val_dataset,
             batch_size=settings.batch_size,
             shuffle=False,
-            num_workers=0,
+            num_workers=num_workers,
+            pin_memory=use_pin_memory,
+            persistent_workers=persistent,
+            prefetch_factor=prefetch,
+            collate_fn=_collate_with_names,
         )
         return train_loader, val_loader

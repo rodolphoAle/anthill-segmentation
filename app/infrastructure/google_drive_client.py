@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import time
 from typing import Any
 
 from google.oauth2 import service_account
@@ -41,6 +42,17 @@ class GoogleDriveClient:
             self._credentials_path, scopes=scopes,
         )
         return build("drive", "v3", credentials=credentials)
+
+    def __getstate__(self) -> dict:
+        """Exclude the non-picklable Drive service when sent to worker processes.
+
+        DataLoader worker processes receive a pickled copy of the dataset,
+        which includes this client.  Resetting ``_service`` to ``None`` lets
+        each worker re-authenticate lazily on its first download call.
+        """
+        state = self.__dict__.copy()
+        state["_service"] = None
+        return state
 
     @property
     def service(self) -> Any:
@@ -97,22 +109,46 @@ class GoogleDriveClient:
             ]
         return items
 
+    _MAX_DOWNLOAD_RETRIES: int = 3
+
     def _sync_download_file(
         self, file_id: str, destination_path: str | None = None,
     ) -> io.BytesIO | str:
-        request = self.service.files().get_media(fileId=file_id)
-        buffer = io.BytesIO()
-        downloader = MediaIoBaseDownload(buffer, request)
-        done = False
-        while not done:
-            _, done = downloader.next_chunk()
-        buffer.seek(0)
+        last_exc: Exception | None = None
+        for attempt in range(self._MAX_DOWNLOAD_RETRIES):
+            try:
+                request = self.service.files().get_media(fileId=file_id)
+                buffer = io.BytesIO()
+                downloader = MediaIoBaseDownload(buffer, request)
+                done = False
+                while not done:
+                    _, done = downloader.next_chunk()
+                buffer.seek(0)
 
-        if destination_path:
-            with open(destination_path, "wb") as fh:
-                fh.write(buffer.read())
-            return destination_path
-        return buffer
+                if destination_path:
+                    with open(destination_path, "wb") as fh:
+                        fh.write(buffer.read())
+                    return destination_path
+                return buffer
+
+            except Exception as exc:
+                last_exc = exc
+                if attempt < self._MAX_DOWNLOAD_RETRIES - 1:
+                    wait = 2 ** attempt
+                    logger.warning(
+                        "Download attempt {}/{} failed ({}), retrying in {}s…",
+                        attempt + 1,
+                        self._MAX_DOWNLOAD_RETRIES,
+                        exc,
+                        wait,
+                    )
+                    # Reset service so a stale connection is not reused
+                    self._service = None
+                    time.sleep(wait)
+
+        raise RuntimeError(
+            f"Download of '{file_id}' failed after {self._MAX_DOWNLOAD_RETRIES} attempts"
+        ) from last_exc
 
     #  public async API 
 
