@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     #   ↑ larger  → smoother loss curve, more stable gradients, more VRAM
     #   ↓ smaller → noisier gradients (can help escape local minima), less VRAM
     #   Applied in: DataLoader(batch_size=...) inside data_service.py
-    batch_size: int = 6
+    batch_size: int = 4
 
     # learning_rate: step size for the Adam optimiser.
     #   ↑ larger  → faster convergence but risk of overshooting / loss oscillation
@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     #   ↑ larger  → more learning time; monitor val_loss to detect overfitting
     #   ↓ smaller → faster experiment cycle
     #   Applied in: _train_loop outer loop inside training_service.py
-    num_epochs: int = 80
+    num_epochs: int = 100
 
     # num_workers: subprocess workers that load batches from disk in parallel.
     #   0   → main process only (use for debugging DataLoader issues)
@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     #               → better recall, but may produce more false positives
     #   ↓ smaller → safer against false positives, but may miss small anthills
     #   Applied in: nn.CrossEntropyLoss(weight=[bg, anthill]) in training_service.py
-    class_weight_anthill: float = 2.5
+    class_weight_anthill: float = 6.0
 
     # grad_clip_max_norm: maximum L2 norm allowed for the full gradient vector.
     # Prevents exploding gradients (critical for UNets without BatchNorm).
@@ -118,7 +118,7 @@ class Settings(BaseSettings):
     #   ↑ larger  → gives more time before reducing LR; good for noisy datasets
     #   ↓ smaller → reacts faster to plateaus; risk of reducing LR too early
     #   Applied in: ReduceLROnPlateau(patience=...) in training_service.py
-    scheduler_patience: int = 6
+    scheduler_patience: int = 5
 
     # ── Training — data augmentations ─────────────────────────────────────────
     # All augmentations are applied jointly to the image AND the mask so spatial
@@ -137,12 +137,12 @@ class Settings(BaseSettings):
     #   ↑ larger (→ 90) → more orientational variety; can push label pixels
     #                      outside the tile at large angles (handled by ignore)
     #   0               → disables rotation augmentation
-    aug_rotation_degrees: int = 30
+    aug_rotation_degrees: int = 15
 
     # aug_color_jitter: apply random brightness / contrast / saturation shifts.
     # Does NOT affect the mask (applied to image only).
     #   True  → useful when images come from different flights, sensors, or seasons
-    aug_color_jitter: bool = False
+    aug_color_jitter: bool = True
 
     # aug_color_jitter_brightness: max brightness deviation as fraction of original.
     #   0.0 → no change  |  0.5 → ±50%  |  keep below 0.3 for aerial imagery

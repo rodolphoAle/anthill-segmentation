@@ -81,7 +81,7 @@ async def _run_validate(
     training_service: TrainingService,
 ) -> None:
     """Load saved weights and run streaming validation with metric reporting."""
-    weights_path = settings.model_save_path
+    weights_path = settings.best_model_params_path
     logger.info("Loading model weights from '{}'…", weights_path)
     state_dict = await asyncio.to_thread(
         torch.load, weights_path, map_location=training_service.device

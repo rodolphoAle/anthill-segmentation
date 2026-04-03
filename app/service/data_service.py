@@ -17,7 +17,7 @@ from pathlib import Path
 
 import torch
 import torchvision.transforms.v2 as transforms
-from loguru import logger
+from loguru import logger # pyright: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 
 from app.core.config import settings
@@ -37,7 +37,7 @@ def _collate_with_names(
     return images, masks, names
 
 
-def create_train_transforms() -> transforms.Compose:
+def create_train_transforms() -> transforms.Compose | None:
     """Build geometric + photometric augmentations from settings.
 
     All transforms that affect spatial layout (flip, rotation) are applied
@@ -50,7 +50,7 @@ def create_train_transforms() -> transforms.Compose:
     geometric ops.  ColorJitter is safe on PIL images and is only applied to
     the image tensor AFTER the joint step via a second transform in the dataset.
 
-    Returns an empty Compose if all augmentations are disabled.
+    Returns None if all augmentations are disabled.
     """
     transform_list: list[transforms.Transform] = []
 
@@ -62,6 +62,9 @@ def create_train_transforms() -> transforms.Compose:
 
     if settings.aug_rotation_degrees > 0:
         transform_list.append(transforms.RandomRotation(settings.aug_rotation_degrees))
+
+    if not transform_list:
+        return None
 
     return transforms.Compose(transform_list)
 
