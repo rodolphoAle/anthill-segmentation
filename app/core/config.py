@@ -184,6 +184,20 @@ class Settings(BaseSettings):
     #   ↓ smaller → saves tiles with even tiny anthill detections (more, noisier)
     anthill_save_threshold: float = 0.1
 
+    # anthill_confidence_threshold: minimum softmax probability (0.5–1.0) required
+    # to classify a pixel as anthill. Values above 0.5 make the model less trigger-happy.
+    #   0.5  → same as argmax (default behaviour — accept any majority vote)
+    #   0.7  → only mark pixel as anthill if model is ≥70% confident
+    #   0.9  → very conservative; reduces false positives significantly
+    anthill_confidence_threshold: float = 0.7
+
+    # min_anthill_region_px: minimum number of connected pixels to keep as a valid
+    # anthill detection. Isolated fragments smaller than this are removed (set to
+    # background) after the confidence threshold is applied.
+    #   ↑ larger → fewer, bigger detections (removes scattered noise)
+    #   ↓ smaller (→ 1) → keeps every pixel cluster, even single-pixel noise
+    min_anthill_region_px: int = 200
+
     model_config = {"env_file": ".env", "env_prefix": "UNET_"}
 
 

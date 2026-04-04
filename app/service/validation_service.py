@@ -25,9 +25,11 @@ from pathlib import Path
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torchvision.transforms.v2 as transforms
 from loguru import logger  # pyright: ignore[reportMissingImports]
 from PIL import Image
+from scipy.ndimage import label as ndimage_label
 
 from app.core.config import settings
 from app.core.exceptions import DatasetNotFoundError, FolderNotFoundError
@@ -108,8 +110,28 @@ class ValidationService:
         self._model.eval()
         with torch.no_grad():
             output = self._model(tensor)
-            prediction = torch.argmax(output, dim=1).squeeze().cpu().numpy()
-        return prediction
+            probs = F.softmax(output, dim=1)
+            anthill_prob = probs[0, self._ANTHILL_CLASS].cpu().numpy()
+            prediction = (anthill_prob >= settings.anthill_confidence_threshold).astype(np.uint8)
+        return self._filter_small_regions(prediction)
+
+    @staticmethod
+    def _filter_small_regions(mask: np.ndarray) -> np.ndarray:
+        """Remove connected anthill regions smaller than min_anthill_region_px.
+
+        Isolated pixel clusters below the threshold are set to background (0),
+        eliminating scattered noise false positives.
+        """
+        if settings.min_anthill_region_px <= 1:
+            return mask
+        labeled, num_features = ndimage_label(mask)
+        if num_features == 0:
+            return mask
+        filtered = np.zeros_like(mask)
+        for region_id in range(1, num_features + 1):
+            if int((labeled == region_id).sum()) >= settings.min_anthill_region_px:
+                filtered[labeled == region_id] = 1
+        return filtered
 
     def _save_anthill_result_sync(
         self,
