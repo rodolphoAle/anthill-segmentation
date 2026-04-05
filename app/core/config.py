@@ -198,14 +198,14 @@ class Settings(BaseSettings):
     #   0.5  → same as argmax (default behaviour — accept any majority vote)
     #   0.7  → only mark pixel as anthill if model is ≥70% confident
     #   0.9  → very conservative; reduces false positives significantly
-    anthill_confidence_threshold: float = 0.7
+    anthill_confidence_threshold: float = 0.6
 
     # min_anthill_region_px: minimum number of connected pixels to keep as a valid
     # anthill detection. Isolated fragments smaller than this are removed (set to
     # background) after the confidence threshold is applied.
     #   ↑ larger → fewer, bigger detections (removes scattered noise)
     #   ↓ smaller (→ 1) → keeps every pixel cluster, even single-pixel noise
-    min_anthill_region_px: int = 200
+    min_anthill_region_px: int = 100
 
     # max_anthill_region_px: maximum number of connected pixels allowed for a
     # region to be kept as a valid anthill detection. Very large regions are
