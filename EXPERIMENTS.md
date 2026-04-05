@@ -4,6 +4,39 @@ Histórico completo dos experimentos de treinamento e validação do modelo U-Ne
 
 ---
 
+## Glossário de Siglas e Termos
+
+| Sigla / Termo        | Significado                                                                                                  |
+| -------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **U-Net**      | Arquitetura de rede neural convolucional encoder-decoder com skip connections, projetada para segmentação de imagens |
+| **RGB**        | Red Green Blue — imagem colorida com 3 canais                                                                |
+| **GT**         | Ground Truth — label anotada manualmente, usada como referência para avaliação                             |
+| **mIoU**       | Mean Intersection over Union — média do IoU calculado sobre todas as classes (fundo + formigueiro)          |
+| **IoU**        | Intersection over Union — sobreposição pixel a pixel: área da interseção ÷ área da união entre predição e GT |
+| **Dice**       | Dice Coefficient (equivalente ao F1 de pixels) — `2×interseção / (pred + GT)`; mais sensível a regiões pequenas |
+| **TP**         | True Positive — imagem COM formigueiro na GT e que o modelo **detectou**                                    |
+| **FP**         | False Positive — imagem SEM formigueiro na GT mas que o modelo "detectou" (alarme falso)                    |
+| **FN**         | False Negative — imagem COM formigueiro na GT mas que o modelo **não detectou** (formigueiro perdido)       |
+| **TN**         | True Negative — imagem SEM formigueiro na GT e que o modelo corretamente não detectou                       |
+| **Precision**  | `TP / (TP + FP)` — dos que o modelo disse "tem formigueiro", quantos realmente tinham?                      |
+| **Recall**     | `TP / (TP + FN)` — dos que realmente tinham formigueiro, quantos o modelo encontrou?                        |
+| **F1 Score**   | `2 × Precision × Recall / (Precision + Recall)` — média harmônica entre Precision e Recall                 |
+| **LR**         | Learning Rate — taxa de aprendizado do otimizador Adam                                                       |
+| **val_loss**   | Validation Loss — valor da função de perda no conjunto de validação (sem gradient update)                   |
+| **train_loss** | Training Loss — valor da função de perda no conjunto de treino durante o forward pass                       |
+| **BCE**        | Binary Cross-Entropy — função de perda para classificação binária por pixel                                  |
+| **Focal Loss** | Variante da Cross-Entropy que reduz o peso de exemplos fáceis (γ > 0), focando o treino em casos difíceis  |
+| **γ (gamma)**  | Parâmetro do Focal Loss — valores maiores aumentam o foco em exemplos difíceis                              |
+| **pp**         | Pontos percentuais — diferença absoluta entre dois valores percentuais (ex: 49% → 75% = +26 pp)             |
+| **CUDA**       | Compute Unified Device Architecture — plataforma de computação paralela em GPU NVIDIA                       |
+| **VRAM**       | Video RAM — memória da GPU usada para armazenar pesos e ativações durante treino/inferência                  |
+| **DataLoader** | Componente PyTorch que carrega batches de dados em paralelo durante treino e validação                       |
+| **BatchNorm**  | Batch Normalization — normaliza ativações por batch; melhora estabilidade e velocidade de convergência      |
+| **softmax**    | Função que converte logits em probabilidades somando 1.0 — usada na camada de saída da U-Net                |
+| **argmax**     | Retorna o índice da maior probabilidade — forma mais simples de classificação (equivale a threshold 0.5)     |
+
+---
+
 ## Modelo — Arquitetura U-Net
 
 | Componente              | Detalhe                                             |
@@ -95,11 +128,11 @@ model.eval()
 
 **Diretório de saída:** `validation_results/` | **Threshold:** 0.1%
 
-| Métrica                   | Valor                    |
-| -------------------------- | ------------------------ |
-| Pixel Accuracy             | 0.6588 (65.9%)           |
-| **mIoU**             | **0.3718 (37.2%)** |
-| **Mean Dice**        | **0.4186 (41.9%)** |
+| Métrica            | Valor                    |
+| ------------------- | ------------------------ |
+| Pixel Accuracy      | 0.6588 (65.9%)           |
+| **mIoU**      | **0.3718 (37.2%)** |
+| **Mean Dice** | **0.4186 (41.9%)** |
 
 ### Análise
 
@@ -179,7 +212,6 @@ model.eval()
 | **mIoU**      | 0.3495              | **0.4326** | **+0.083** |
 | **Mean Dice** | 0.3950              | **0.4739** | **+0.079** |
 
-
 ### Análise
 
 - **mIoU +23.7% relativo** e **Mean Dice +19.97% relativo** apenas com pós-processamento, sem retreinar
@@ -233,12 +265,52 @@ model.eval()
 
 ## Comparação entre Runs
 
-| Métrica               | Run 01       | Run 02       | Run 02 + Filtros      | Run 03 + Filtros | Melhor                            |
-| ---------------------- | ------------ | ------------ | --------------------- | ---------------- | --------------------------------- |
-| Best val_loss (treino) | 0.0756       | 0.1227       | 0.1227 (mesmo modelo) | **0.0571** | **Run 03**                  |
-| Pixel Accuracy         | 0.6588       | 0.6568       | 0.6601                | **0.6601** | Run 02+F / Run 03+F               |
-| **mIoU**         | 0.3718       | 0.3495       | 0.4326                | **0.4347** | **Run 03+Filtros**          |
-| **Mean Dice**    | 0.4186       | 0.3950       | 0.4739                | **0.4754** | **Run 03+Filtros**          |
+| Métrica               | Run 01 | Run 02 | Run 02 + Filtros      | Run 03 + Filtros | Melhor                   |
+| ---------------------- | ------ | ------ | --------------------- | ---------------- | ------------------------ |
+| Best val_loss (treino) | 0.0756 | 0.1227 | 0.1227 (mesmo modelo) | **0.0571** | **Run 03**         |
+| Pixel Accuracy         | 0.6588 | 0.6568 | 0.6601                | **0.6601** | Run 02+F / Run 03+F      |
+| **mIoU**         | 0.3718 | 0.3495 | 0.4326                | **0.4347** | **Run 03+Filtros** |
+| **Mean Dice**    | 0.4186 | 0.3950 | 0.4739                | **0.4754** | **Run 03+Filtros** |
+
+---
+
+## Avaliação de Detecção vs Ground Truth
+
+Métricas medidas pelo script `scripts/evaluate_detections.py`, comparando as máscaras de predição geradas por `run_validation.py` diretamente contra as labels RGB do set de validação.
+
+> **Dataset de referência:** 2.466 imagens · **593 GT positivas** (contêm formigueiro) · **1.873 GT negativas**
+
+### Detecção no nível de imagem
+
+| Métrica            | Run 02 (c/ filtros) | Run 03 (c/ filtros) | Variação |
+| ------------------- | ------------------- | ------------------- | ---------- |
+| Pred positivas      | 11                  | 395                 | +384       |
+| TP                  | 0                   | **296**       | +296       |
+| FP (alarme falso)   | 11                  | 99                  | +88        |
+| FN (perdido)        | 593                 | **297**       | −296      |
+| TN                  | 1862                | **1774**      | −88       |
+| **Precision** | 0.0%                | **74.9%**     | +74.9 pp   |
+| **Recall**    | 0.0%                | **49.9%**     | +49.9 pp   |
+| **F1 Score**  | 0.0%                | **59.9%**     | +59.9 pp   |
+
+### Segmentação no nível de pixel
+
+| Métrica            | Run 02 (c/ filtros) | Run 03 (c/ filtros) | Variação         |
+| ------------------- | ------------------- | ------------------- | ------------------ |
+| Pixel Accuracy      | 98.6%               | **98.7%**     | +0.1 pp            |
+| IoU — fundo        | 98.6%               | **98.7%**     | +0.1 pp            |
+| IoU — formigueiro  | 0.0%                | **20.9%**     | +20.9 pp           |
+| Dice — fundo       | 99.3%               | **99.4%**     | +0.1 pp            |
+| Dice — formigueiro | 0.0%                | **34.5%**     | +34.5 pp           |
+| **mIoU**      | 49.3%               | **59.8%**     | **+10.5 pp** |
+| **Mean Dice** | 49.6%               | **66.9%**     | **+17.3 pp** |
+
+### Análise
+
+- **Run 02 com filtros detectou praticamente nada** (11 predições, 0 TP): o modelo Run 02 produz predições mais fracas e dispersas — o filtro de confiança 0.7 + regiões ≥ 200 px elimina quase tudo, deixando apenas 11 imagens com alguma detecção, todas falsos positivos.
+- **Run 03 Precision = 74.9%**: quando o modelo detecta, 3 em cada 4 imagens realmente têm formigueiro — o filtro de confiança está funcionando bem para qualidade.
+- **Run 03 Recall = 49.9%**: o modelo ainda perde ~metade dos formigueiros presentes no set de validação — principal gap a resolver em próximos runs.
+- **IoU de Anthill (20.9%)** vs mIoU reportado pela validation_service (43.5%): a diferença se deve ao método de cálculo — `evaluate_detections.py` acumula pixels globalmente sobre todo o dataset (mais rigoroso), enquanto `validation_service` faz média de IoU por imagem e depois agrega.
 
 ---
 
