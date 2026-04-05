@@ -33,7 +33,21 @@ def _apply_cli_overrides() -> None:
     parser.add_argument("--threshold", type=float, metavar="PCT",
                         help="Min anthill %% to save image (UNET_ANTHILL_SAVE_THRESHOLD)")
     parser.add_argument("--weights", metavar="PATH",
-                        help="Model weights file to load (UNET_MODEL_SAVE_PATH)")
+                        help="Model weights file to load (UNET_BEST_MODEL_PARAMS_PATH)")
+    region_filter = parser.add_mutually_exclusive_group()
+    region_filter.add_argument(
+        "--region-filter",
+        dest="region_filter",
+        action="store_true",
+        default=None,
+        help="Enable connected-component size filter after confidence threshold (UNET_USE_REGION_FILTER=true)",
+    )
+    region_filter.add_argument(
+        "--no-region-filter",
+        dest="region_filter",
+        action="store_false",
+        help="Disable connected-component size filter — raw confidence output (UNET_USE_REGION_FILTER=false)",
+    )
     args = parser.parse_args()
 
     mapping = {
@@ -41,12 +55,15 @@ def _apply_cli_overrides() -> None:
         "data_mode": ("UNET_DATA_MODE", str),
         "output_dir": ("UNET_VALIDATION_OUTPUT_DIR", str),
         "threshold": ("UNET_ANTHILL_SAVE_THRESHOLD", str),
-        "weights": ("UNET_MODEL_SAVE_PATH", str),
+        "weights": ("UNET_BEST_MODEL_PARAMS_PATH", str),
     }
     for attr, (env_key, cast) in mapping.items():
         value = getattr(args, attr)
         if value is not None:
             os.environ[env_key] = cast(value)
+
+    if args.region_filter is not None:
+        os.environ["UNET_USE_REGION_FILTER"] = str(args.region_filter).lower()
 
 
 _apply_cli_overrides()

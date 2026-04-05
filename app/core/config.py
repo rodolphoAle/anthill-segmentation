@@ -98,7 +98,16 @@ class Settings(BaseSettings):
     #               → better recall, but may produce more false positives
     #   ↓ smaller → safer against false positives, but may miss small anthills
     #   Applied in: nn.CrossEntropyLoss(weight=[bg, anthill]) in training_service.py
-    class_weight_anthill: float = 6.0
+    class_weight_anthill: float = 4.0
+
+    # focal_loss_gamma: gamma parameter for Focal Loss.
+    # Focal Loss down-weights easy examples (plain soil correctly classified)
+    # so the model focuses on hard cases (ambiguous soil near anthills).
+    #   0.0  → equivalent to standard CrossEntropyLoss
+    #   1.0  → mild focus on hard examples
+    #   2.0  → standard Focal Loss (recommended for imbalanced segmentation)
+    #   Applied in: training_service.py when > 0
+    focal_loss_gamma: float = 2.0
 
     # grad_clip_max_norm: maximum L2 norm allowed for the full gradient vector.
     # Prevents exploding gradients (critical for UNets without BatchNorm).
@@ -177,12 +186,12 @@ class Settings(BaseSettings):
     #   "train"    → train model, save weights to model_save_path
     #   "validate" → load weights, run metrics, save detections to validation_output_dir
     pipeline_mode: str = "train"
-    validation_output_dir: str = "validation_results"
+    validation_output_dir: str = "output/validation_results"
     # anthill_save_threshold: minimum % of pixels predicted as anthill to save
     # the image to validation_output_dir.
     #   ↑ larger  → only saves tiles with large anthill regions (fewer, more confident)
     #   ↓ smaller → saves tiles with even tiny anthill detections (more, noisier)
-    anthill_save_threshold: float = 0.1
+    anthill_save_threshold: float = 0.0
 
     # anthill_confidence_threshold: minimum softmax probability (0.5–1.0) required
     # to classify a pixel as anthill. Values above 0.5 make the model less trigger-happy.
@@ -197,6 +206,27 @@ class Settings(BaseSettings):
     #   ↑ larger → fewer, bigger detections (removes scattered noise)
     #   ↓ smaller (→ 1) → keeps every pixel cluster, even single-pixel noise
     min_anthill_region_px: int = 200
+
+    # max_anthill_region_px: maximum number of connected pixels allowed for a
+    # region to be kept as a valid anthill detection. Very large regions are
+    # almost always false positives caused by reddish soil, crop furrows, or
+    # field boundaries being mistaken for anthills.
+    #
+    # In a 256×256 tile, a formigueiro with ~70px diameter ≈ π*35²≈3.850px.
+    # Blobs following sulco/road patterns are typically >8.000px.
+    #
+    #   ↑ larger (→ 65536) → tolerates bigger detections (fewer filtered out)
+    #   ↓ smaller           → stricter; removes large false-positive blobs
+    #   0                   → disables upper-bound filter
+    max_anthill_region_px: int = 5000
+
+    # use_region_filter: whether to apply the connected-component size filter
+    # (min_anthill_region_px / max_anthill_region_px) after the confidence
+    # threshold during validation.
+    #   True  → filter active (default): removes noise fragments and oversized blobs
+    #   False → raw confidence-threshold output, no region post-processing
+    #           (useful to evaluate what the model produces without any cleanup)
+    use_region_filter: bool = True
 
     model_config = {"env_file": ".env", "env_prefix": "UNET_"}
 

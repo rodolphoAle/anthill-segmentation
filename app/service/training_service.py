@@ -13,12 +13,56 @@ from enum import Enum
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.optim as optim
 from loguru import logger  # pyright: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 
 from app.core.config import settings
 from app.core.exceptions import TrainingAlreadyInProgressError
+
+
+#  Focal Loss 
+
+class FocalLoss(nn.Module):
+    """Weighted Focal Loss for semantic segmentation.
+
+    Focal Loss down-weights easy examples (confidently correct predictions)
+    so training focuses on hard, ambiguous cases — exactly what we need
+    when reddish soil confuses the model.
+
+    FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
+
+    Args:
+        gamma: Focusing parameter. 0.0 = standard CrossEntropyLoss.
+               2.0 is the standard value from the original paper.
+        weight: Per-class weights tensor (same as CrossEntropyLoss weight).
+        ignore_index: Label value to ignore (e.g. 255 for boundary pixels).
+    """
+
+    def __init__(
+        self,
+        gamma: float = 2.0,
+        weight: torch.Tensor | None = None,
+        ignore_index: int = 255,
+    ) -> None:
+        super().__init__()
+        self.gamma = gamma
+        self.weight = weight
+        self.ignore_index = ignore_index
+
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        ce_loss = F.cross_entropy(
+            inputs,
+            targets,
+            weight=self.weight,
+            ignore_index=self.ignore_index,
+            reduction="none",
+        )
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma) * ce_loss
+        valid = targets != self.ignore_index
+        return focal_loss[valid].mean()
 
 
 #  Training state 
@@ -297,7 +341,20 @@ class TrainingService:
             [settings.class_weight_background, settings.class_weight_anthill],
             device=self._device,
         )
-        criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=255)
+        if settings.focal_loss_gamma > 0:
+            criterion: nn.Module = FocalLoss(
+                gamma=settings.focal_loss_gamma,
+                weight=class_weights,
+                ignore_index=255,
+            )
+            logger.info(
+                "Using Focal Loss (gamma={}, weights=[{}, {}])",
+                settings.focal_loss_gamma,
+                settings.class_weight_background,
+                settings.class_weight_anthill,
+            )
+        else:
+            criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=255)
         optimizer = optim.Adam(self._model.parameters(), lr=lr)
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer,

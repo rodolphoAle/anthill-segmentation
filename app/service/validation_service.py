@@ -29,7 +29,7 @@ import torch.nn.functional as F
 import torchvision.transforms.v2 as transforms
 from loguru import logger  # pyright: ignore[reportMissingImports]
 from PIL import Image
-from scipy.ndimage import label as ndimage_label
+from scipy.ndimage import label as ndimage_label # pyright: ignore[reportMissingImports]
 
 from app.core.config import settings
 from app.core.exceptions import DatasetNotFoundError, FolderNotFoundError
@@ -113,23 +113,26 @@ class ValidationService:
             probs = F.softmax(output, dim=1)
             anthill_prob = probs[0, self._ANTHILL_CLASS].cpu().numpy()
             prediction = (anthill_prob >= settings.anthill_confidence_threshold).astype(np.uint8)
-        return self._filter_small_regions(prediction)
+        if settings.use_region_filter:
+            return self._filter_small_regions(prediction)
+        return prediction
 
     @staticmethod
     def _filter_small_regions(mask: np.ndarray) -> np.ndarray:
-        """Remove connected anthill regions smaller than min_anthill_region_px.
-
-        Isolated pixel clusters below the threshold are set to background (0),
-        eliminating scattered noise false positives.
-        """
-        if settings.min_anthill_region_px <= 1:
+        """Remove regions outside the [min_anthill_region_px, max_anthill_region_px] range."""
+        min_px = settings.min_anthill_region_px
+        max_px = settings.max_anthill_region_px
+        if min_px <= 1 and max_px <= 0:
             return mask
         labeled, num_features = ndimage_label(mask)
         if num_features == 0:
             return mask
         filtered = np.zeros_like(mask)
         for region_id in range(1, num_features + 1):
-            if int((labeled == region_id).sum()) >= settings.min_anthill_region_px:
+            size = int((labeled == region_id).sum())
+            too_small = min_px > 1 and size < min_px
+            too_large = max_px > 0 and size > max_px
+            if not too_small and not too_large:
                 filtered[labeled == region_id] = 1
         return filtered
 

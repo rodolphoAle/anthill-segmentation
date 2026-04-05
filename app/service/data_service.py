@@ -196,6 +196,42 @@ class DataService:
 
         return paths
 
+    async def download_validation_from_drive(self) -> tuple[Path, Path]:
+        """Download validation labels + RGB from Google Drive to local disk.
+
+        Files are saved to the paths configured in settings
+        (``local_data_dir / val_labels_subdir`` and
+        ``local_data_dir / val_rgb_subdir``).  Files already present on
+        disk are skipped to avoid redundant downloads.
+
+        Returns:
+            ``(val_labels_dir, val_rgb_dir)`` — the local directories
+            containing the downloaded files.
+
+        Raises:
+            DatasetNotFoundError: If the storage client is not configured
+                or the remote folders cannot be found.
+        """
+        base = Path(settings.local_data_dir)
+        val_labels = base / settings.val_labels_subdir
+        val_rgb = base / settings.val_rgb_subdir
+
+        val_lbl_id = await self._resolve_subfolder_id(
+            settings.base_folder_id, "validacao", "labels"
+        )
+        val_rgb_id = await self._resolve_subfolder_id(
+            settings.base_folder_id, "validacao", "rgb"
+        )
+
+        img_exts = [".png", ".jpg", ".jpeg", ".tif"]
+        await self._download_folder_contents(val_lbl_id, val_labels, [".png"])
+        await self._download_folder_contents(val_rgb_id, val_rgb, img_exts)
+
+        logger.info(
+            "Validation data ready — labels: {} | rgb: {}", val_labels, val_rgb
+        )
+        return val_labels, val_rgb
+
     #  DataLoader creation 
 
     async def create_dataloaders(
