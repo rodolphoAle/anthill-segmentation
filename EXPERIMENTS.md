@@ -27,6 +27,9 @@ Histórico completo dos experimentos de treinamento e validação do modelo U-Ne
 | **BCE**        | Binary Cross-Entropy — função de perda para classificação binária por pixel                                  |
 | **Focal Loss** | Variante da Cross-Entropy que reduz o peso de exemplos fáceis (γ > 0), focando o treino em casos difíceis  |
 | **γ (gamma)**  | Parâmetro do Focal Loss — valores maiores aumentam o foco em exemplos difíceis                              |
+| **Tversky Loss** | Função de perda derivada do Dice que permite controlar independentemente o peso de FP (α) e FN (β). Com β > α, penaliza mais os FN, otimizando diretamente o Recall |
+| **α (alpha)**  | Peso dos FP no denominador da Tversky Loss — menor α = mais tolerante a alarmes falsos                      |
+| **β (beta)**   | Peso dos FN no denominador da Tversky Loss — maior β = penaliza mais fortemente formigueiros não detectados |
 | **pp**         | Pontos percentuais — diferença absoluta entre dois valores percentuais (ex: 49% → 75% = +26 pp)             |
 | **CUDA**       | Compute Unified Device Architecture — plataforma de computação paralela em GPU NVIDIA                       |
 | **VRAM**       | Video RAM — memória da GPU usada para armazenar pesos e ativações durante treino/inferência                  |
@@ -260,6 +263,60 @@ model.eval()
 | Pixel Accuracy      | 0.6601 (66.0%)           |
 | **mIoU**      | **0.4347 (43.5%)** |
 | **Mean Dice** | **0.4754 (47.5%)** |
+
+## Run 04 — Tversky Loss (α=0.3, β=0.7)
+
+**Data:** 2026-04-05 → em andamento
+**Checkpoint:** `best_model_params.pth`
+**Épocas configuradas:** 100
+
+### Motivação
+
+O experimento de sensibilidade de parâmetros no Run 03 revelou que o modelo já detecta ~78% dos formigueiros, mas com probabilidade softmax entre 0.6–0.7 (abaixo do threshold padrão 0.7). Isso indica que o problema não é cegueira do modelo, mas **falta de polarização das probabilidades**: formigueiros verdadeiros ficam na faixa de ambiguidade enquanto o modelo não tem incentivo para empurrar essas predições para ≥ 0.85.
+
+A **Tversky Loss** resolve isso ao penalizar FN 2.3× mais que FP no loss, forçando o modelo a aprender representações mais confiantes para a classe formigueiro:
+
+$$TL = 1 - \frac{TP}{TP + \alpha \cdot FP + \beta \cdot FN}$$
+
+Com α=0.3, β=0.7: o modelo paga 2.3× mais por cada formigueiro que ele **perde** do que por cada alarme falso que ele gera.
+
+### Parâmetros alterados em relação ao Run 03
+
+| Parâmetro                | Run 03                     | Run 04                           | Motivo                                                       |
+| ------------------------- | -------------------------- | -------------------------------- | ------------------------------------------------------------ |
+| Função de loss          | FocalLoss (γ=2.0)         | **Tversky Loss (α=0.3, β=0.7)** | Penaliza FN diretamente; force polarização do softmax     |
+| class_weight_anthill      | 4.0                        | **6.0** (backup CE/Focal)  | Tversky não usa class_weight — mantido caso fallback ative |
+| anthill_confidence_threshold | 0.7 (durante Run 03)    | **0.6**                    | Modelo treinado p/ polarizar → threshold menor seguro      |
+| min_anthill_region_px     | 200 (durante Run 03)       | **100**                    | Reduz FN de formigueiros pequenos                            |
+| focal_loss_gamma          | 2.0                        | **0.0** (desativado)       | Tversky tem prioridade — Focal desligado                   |
+
+### Parâmetros inalterados
+
+| Parâmetro           | Valor     |
+| -------------------- | --------- |
+| Batch size           | 4         |
+| Learning rate        | 1e-3      |
+| Otimizador           | Adam      |
+| Grad clip max norm   | 1.0       |
+| Scheduler factor     | 0.5       |
+| Scheduler patience   | 5         |
+| Augmentations        | Todas ativas (flip H/V, rot 15°, color jitter) |
+
+### Meta — Run 04
+
+| Métrica   | Run 03 baseline | Alvo Run 04 |
+| ---------- | --------------- | ------------ |
+| Recall     | 49.9%           | **≥ 80%**  |
+| Precision  | 74.9%           | **≥ 65%**  |
+| F1 Score   | 59.9%           | **≥ 72%**  |
+
+### Curva de Loss
+
+*(a preencher após o treino)*
+
+### Resultados da Validação
+
+*(a preencher após o treino)*
 
 ---
 

@@ -65,6 +65,59 @@ class FocalLoss(nn.Module):
         return focal_loss[valid].mean()
 
 
+#  Tversky Loss 
+
+class TverskyLoss(nn.Module):
+    """Tversky Loss — penalises FN more than FP when beta > alpha.
+
+    TL = 1 - TP / (TP + alpha*FP + beta*FN)
+
+    With alpha=0.3, beta=0.7: FN is weighted 2.3× more than FP, which
+    directly optimises Recall at the cost of some Precision.  Ideal when
+    missing a detection is costlier than a false alarm.
+
+    Args:
+        alpha: Weight for FP in the denominator (lower → more FP-tolerant).
+        beta:  Weight for FN in the denominator (higher → stronger Recall push).
+        smooth: Laplace smoothing to avoid division by zero.
+        ignore_index: Label value excluded from the loss computation (e.g. 255).
+    """
+
+    def __init__(
+        self,
+        alpha: float = 0.3,
+        beta: float = 0.7,
+        smooth: float = 1.0,
+        ignore_index: int = 255,
+    ) -> None:
+        super().__init__()
+        self.alpha = alpha
+        self.beta = beta
+        self.smooth = smooth
+        self.ignore_index = ignore_index
+
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        # inputs: (N, C, H, W) logits — C=2 (background, anthill)
+        probs = F.softmax(inputs, dim=1)          # (N, 2, H, W)
+        anthill_prob = probs[:, 1, :, :]          # (N, H, W)
+
+        # Build binary target and valid mask
+        valid_mask = targets != self.ignore_index  # (N, H, W)
+        target_bin = (targets == 1).float()        # (N, H, W) — 1=anthill
+
+        anthill_prob = anthill_prob[valid_mask]
+        target_bin   = target_bin[valid_mask]
+
+        tp = (anthill_prob * target_bin).sum()
+        fp = (anthill_prob * (1.0 - target_bin)).sum()
+        fn = ((1.0 - anthill_prob) * target_bin).sum()
+
+        tversky_index = (tp + self.smooth) / (
+            tp + self.alpha * fp + self.beta * fn + self.smooth
+        )
+        return 1.0 - tversky_index
+
+
 #  Training state 
 
 class TrainingStatus(str, Enum):
@@ -341,8 +394,19 @@ class TrainingService:
             [settings.class_weight_background, settings.class_weight_anthill],
             device=self._device,
         )
-        if settings.focal_loss_gamma > 0:
-            criterion: nn.Module = FocalLoss(
+        if settings.tversky_alpha > 0 and settings.tversky_beta > 0:
+            criterion: nn.Module = TverskyLoss(
+                alpha=settings.tversky_alpha,
+                beta=settings.tversky_beta,
+                ignore_index=255,
+            )
+            logger.info(
+                "Using Tversky Loss (alpha={}, beta={}) — class weights ignored (Tversky uses soft probabilities)",
+                settings.tversky_alpha,
+                settings.tversky_beta,
+            )
+        elif settings.focal_loss_gamma > 0:
+            criterion = FocalLoss(
                 gamma=settings.focal_loss_gamma,
                 weight=class_weights,
                 ignore_index=255,

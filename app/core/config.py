@@ -103,11 +103,24 @@ class Settings(BaseSettings):
     # focal_loss_gamma: gamma parameter for Focal Loss.
     # Focal Loss down-weights easy examples (plain soil correctly classified)
     # so the model focuses on hard cases (ambiguous soil near anthills).
-    #   0.0  → equivalent to standard CrossEntropyLoss
+    #   0.0  → equivalent to standard CrossEntropyLoss (also disables Focal Loss
+    #           in favour of Tversky when tversky_alpha/beta > 0)
     #   1.0  → mild focus on hard examples
     #   2.0  → standard Focal Loss (recommended for imbalanced segmentation)
-    #   Applied in: training_service.py when > 0
-    focal_loss_gamma: float = 2.0
+    #   Applied in: training_service.py when tversky_alpha=0 and gamma > 0
+    focal_loss_gamma: float = 0.0
+
+    # tversky_alpha / tversky_beta: weights for FP and FN in Tversky Loss.
+    # TL = 1 - TP / (TP + alpha*FP + beta*FN)
+    #   alpha=0.5, beta=0.5 → equivalent to Dice Loss
+    #   alpha=0.3, beta=0.7 → FN penalised 2.3× more than FP; pushes Recall up
+    #   alpha=0.0, beta=0.0 → disables Tversky Loss (falls back to Focal or CE)
+    # NOTE: Tversky Loss works on soft probabilities and does not use
+    #       class_weight_anthill — the beta parameter replaces that role.
+    #   Applied in: training_service.py when both alpha and beta > 0 (takes
+    #               priority over focal_loss_gamma)
+    tversky_alpha: float = 0.3   # UNET_TVERSKY_ALPHA
+    tversky_beta: float = 0.7    # UNET_TVERSKY_BETA
 
     # grad_clip_max_norm: maximum L2 norm allowed for the full gradient vector.
     # Prevents exploding gradients (critical for UNets without BatchNorm).
