@@ -118,7 +118,62 @@ class TverskyLoss(nn.Module):
         return 1.0 - tversky_index
 
 
-#  Training state 
+#  Combined Tversky + Focal Loss 
+
+class CombinedTverskyFocalLoss(nn.Module):
+    """Combines Tversky Loss and Focal Loss to prevent mode collapse.
+
+    Pure Tversky/Dice losses collapse to "predict all background" during
+    early training when the class imbalance is extreme: the alpha*FP term
+    dominates, the gradient drives anthill_prob → 0 everywhere, and
+    val_loss freezes at a constant value while LR decays to zero.
+
+    This class anchors training with Focal Loss (per-pixel cross-entropy
+    gradients + class weights) and adds the Tversky term to push Recall:
+
+        total = tversky_weight * TverskyLoss
+              + (1 - tversky_weight) * FocalLoss
+
+    The Focal component prevents collapse; the Tversky component ensures
+    FN are penalised more than FP once the model is stable.
+
+    Args:
+        tversky_alpha:  FP weight in Tversky denominator (lower → FP-tolerant).
+        tversky_beta:   FN weight in Tversky denominator (higher → Recall push).
+        tversky_weight: Fraction of the total loss assigned to Tversky [0, 1].
+        focal_gamma:    Focusing exponent for the Focal component.
+        class_weights:  Per-class weights tensor for the Focal component.
+        ignore_index:   Label value excluded from both components (e.g. 255).
+    """
+
+    def __init__(
+        self,
+        tversky_alpha: float = 0.3,
+        tversky_beta: float = 0.7,
+        tversky_weight: float = 0.5,
+        focal_gamma: float = 2.0,
+        class_weights: torch.Tensor | None = None,
+        ignore_index: int = 255,
+    ) -> None:
+        super().__init__()
+        self._tversky = TverskyLoss(
+            alpha=tversky_alpha,
+            beta=tversky_beta,
+            ignore_index=ignore_index,
+        )
+        self._focal = FocalLoss(
+            gamma=focal_gamma,
+            weight=class_weights,
+            ignore_index=ignore_index,
+        )
+        self._tversky_weight = tversky_weight
+        self._focal_weight = 1.0 - tversky_weight
+
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        return (
+            self._tversky_weight * self._tversky(inputs, targets)
+            + self._focal_weight * self._focal(inputs, targets)
+        )
 
 class TrainingStatus(str, Enum):
     """Finite-state representation of a training job."""
@@ -395,15 +450,23 @@ class TrainingService:
             device=self._device,
         )
         if settings.tversky_alpha > 0 and settings.tversky_beta > 0:
-            criterion: nn.Module = TverskyLoss(
-                alpha=settings.tversky_alpha,
-                beta=settings.tversky_beta,
+            criterion: nn.Module = CombinedTverskyFocalLoss(
+                tversky_alpha=settings.tversky_alpha,
+                tversky_beta=settings.tversky_beta,
+                tversky_weight=settings.tversky_loss_weight,
+                focal_gamma=settings.focal_loss_gamma if settings.focal_loss_gamma > 0 else 2.0,
+                class_weights=class_weights,
                 ignore_index=255,
             )
             logger.info(
-                "Using Tversky Loss (alpha={}, beta={}) — class weights ignored (Tversky uses soft probabilities)",
+                "Using Combined Tversky+Focal Loss "
+                "(tversky_weight={}, alpha={}, beta={}, focal_gamma={}, class_weights=[{}, {}])",
+                settings.tversky_loss_weight,
                 settings.tversky_alpha,
                 settings.tversky_beta,
+                settings.focal_loss_gamma if settings.focal_loss_gamma > 0 else 2.0,
+                settings.class_weight_background,
+                settings.class_weight_anthill,
             )
         elif settings.focal_loss_gamma > 0:
             criterion = FocalLoss(

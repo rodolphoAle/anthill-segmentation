@@ -122,6 +122,16 @@ class Settings(BaseSettings):
     tversky_alpha: float = 0.3   # UNET_TVERSKY_ALPHA
     tversky_beta: float = 0.7    # UNET_TVERSKY_BETA
 
+    # tversky_loss_weight: fraction of the combined loss assigned to Tversky.
+    # The remaining (1 - tversky_loss_weight) goes to Focal Loss.
+    # Using a combined loss prevents mode collapse: Focal anchors early training
+    # while Tversky pushes for higher Recall once the model is stable.
+    #   0.5 → equal weighting (recommended starting point)
+    #   0.7 → stronger Recall push (use if Recall is still insufficient after run)
+    #   0.0 → disables Tversky (pure Focal Loss — same as focal_loss_gamma > 0 path)
+    #   Applied in: CombinedTverskyFocalLoss when tversky_alpha > 0 and beta > 0
+    tversky_loss_weight: float = 0.5   # UNET_TVERSKY_LOSS_WEIGHT
+
     # grad_clip_max_norm: maximum L2 norm allowed for the full gradient vector.
     # Prevents exploding gradients (critical for UNets without BatchNorm).
     #   ↑ larger  → allows bigger gradient steps; faster early phases
