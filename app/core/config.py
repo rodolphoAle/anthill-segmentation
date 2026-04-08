@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     #   0   → main process only (use for debugging DataLoader issues)
     #   1-4 → parallel I/O; recommended when data_mode="local"
     #   Applied in: DataLoader(num_workers=...) inside data_service.py
-    num_workers: int = 4
+    num_workers: int = 5
 
     # device: compute backend.
     #   "auto" → CUDA if available, otherwise CPU
@@ -120,7 +120,7 @@ class Settings(BaseSettings):
     #   Applied in: training_service.py when both alpha and beta > 0 (takes
     #               priority over focal_loss_gamma)
     tversky_alpha: float = 0.3   # UNET_TVERSKY_ALPHA
-    tversky_beta: float = 0.7    # UNET_TVERSKY_BETA
+    tversky_beta: float = 0.6    # UNET_TVERSKY_BETA
 
     # tversky_loss_weight: fraction of the combined loss assigned to Tversky.
     # The remaining (1 - tversky_loss_weight) goes to Focal Loss.
