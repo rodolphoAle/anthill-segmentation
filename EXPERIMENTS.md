@@ -264,59 +264,77 @@ model.eval()
 | **mIoU**      | **0.4347 (43.5%)** |
 | **Mean Dice** | **0.4754 (47.5%)** |
 
-## Run 04 — Tversky Loss (α=0.3, β=0.7)
+## Run 04 — CombinedTverskyFocalLoss (α=0.3, β=0.7 + Focal γ=2.0)
 
-**Data:** 2026-04-05 → em andamento
+**Data:** 2026-04-05 → 2026-04-06
 **Checkpoint:** `best_model_params.pth`
-**Épocas configuradas:** 100
+**Épocas configuradas:** 100 | **Épocas executadas:** 64 (interrompido manualmente — LR < 4e-6, platô confirmado)
 
 ### Motivação
 
 O experimento de sensibilidade de parâmetros no Run 03 revelou que o modelo já detecta ~78% dos formigueiros, mas com probabilidade softmax entre 0.6–0.7 (abaixo do threshold padrão 0.7). Isso indica que o problema não é cegueira do modelo, mas **falta de polarização das probabilidades**: formigueiros verdadeiros ficam na faixa de ambiguidade enquanto o modelo não tem incentivo para empurrar essas predições para ≥ 0.85.
 
-A **Tversky Loss** resolve isso ao penalizar FN 2.3× mais que FP no loss, forçando o modelo a aprender representações mais confiantes para a classe formigueiro:
+A **Tversky Loss** penaliza FN 2.3× mais que FP, forçando o modelo a aprender representações mais confiantes para a classe formigueiro:
 
 $$TL = 1 - \frac{TP}{TP + \alpha \cdot FP + \beta \cdot FN}$$
 
-Com α=0.3, β=0.7: o modelo paga 2.3× mais por cada formigueiro que ele **perde** do que por cada alarme falso que ele gera.
+> **⚠️ Incidente Run 04-a (Tversky pura):** A primeira tentativa com Tversky Loss pura colapsou na época 1 — `val_loss` travou em **0.3735** por 87 épocas com LR decaindo até 6e-8. Diagnóstico: com desbalanço extremo (~5-10% pixels de formigueiro), o termo `α×FP` domina o denominador no início do treino e o gradiente empurra `anthill_prob → 0` para todos os pixels. Fix: loss combinada ancorada pela Focal Loss.
 
 ### Parâmetros alterados em relação ao Run 03
 
-| Parâmetro                | Run 03                     | Run 04                           | Motivo                                                       |
-| ------------------------- | -------------------------- | -------------------------------- | ------------------------------------------------------------ |
-| Função de loss          | FocalLoss (γ=2.0)         | **Tversky Loss (α=0.3, β=0.7)** | Penaliza FN diretamente; force polarização do softmax     |
-| class_weight_anthill      | 4.0                        | **6.0** (backup CE/Focal)  | Tversky não usa class_weight — mantido caso fallback ative |
-| anthill_confidence_threshold | 0.7 (durante Run 03)    | **0.6**                    | Modelo treinado p/ polarizar → threshold menor seguro      |
-| min_anthill_region_px     | 200 (durante Run 03)       | **100**                    | Reduz FN de formigueiros pequenos                            |
-| focal_loss_gamma          | 2.0                        | **0.0** (desativado)       | Tversky tem prioridade — Focal desligado                   |
+| Parâmetro                    | Run 03            | Run 04                                       | Motivo                                                             |
+| ----------------------------- | ----------------- | -------------------------------------------- | ------------------------------------------------------------------ |
+| Função de loss              | FocalLoss (γ=2.0) | **CombinedTverskyFocal (50% Tversky + 50% Focal)** | Tversky pura colapsa com desbalanço extremo; Focal ancora o treino |
+| Tversky α / β                | —                 | **α=0.3 · β=0.7**                      | FN penalizado 2.3× mais que FP; empurra Recall                   |
+| Focal γ (dentro da combined) | 2.0 (autônoma)    | **2.0** (componente da combined)       | Mantém foco em casos difíceis                                     |
+| class_weight_anthill         | 4.0               | **6.0**                                | Aplicado ao componente Focal da combined loss                      |
+| anthill_confidence_threshold | 0.7               | **0.6**                                | Threshold mais baixo para capturar mais formigueiros               |
+| min_anthill_region_px        | 200               | **100**                                | Reduz FN de formigueiros pequenos                                  |
 
 ### Parâmetros inalterados
 
-| Parâmetro           | Valor     |
-| -------------------- | --------- |
-| Batch size           | 4         |
-| Learning rate        | 1e-3      |
-| Otimizador           | Adam      |
-| Grad clip max norm   | 1.0       |
-| Scheduler factor     | 0.5       |
-| Scheduler patience   | 5         |
+| Parâmetro           | Valor |
+| -------------------- | ----- |
+| Batch size           | 4     |
+| Learning rate        | 1e-3  |
+| Otimizador           | Adam  |
+| Scheduler patience   | 5     |
+| Scheduler factor     | 0.5   |
+| Grad clip max norm   | 1.0   |
 | Augmentations        | Todas ativas (flip H/V, rot 15°, color jitter) |
-
-### Meta — Run 04
-
-| Métrica   | Run 03 baseline | Alvo Run 04 |
-| ---------- | --------------- | ------------ |
-| Recall     | 49.9%           | **≥ 80%**  |
-| Precision  | 74.9%           | **≥ 65%**  |
-| F1 Score   | 59.9%           | **≥ 72%**  |
 
 ### Curva de Loss
 
-*(a preencher após o treino)*
+> **Nota:** A escala de val_loss **não é comparável** com os runs anteriores — a TverskyLoss contribui com valores em [0, 1] e a FocalLoss com valores ~0.06, resultando em combined_loss ~0.45 no início. Os valores de Run 01–03 eram somente Focal/CE.
 
-### Resultados da Validação
+| Época       | train_loss       | val_loss                  | LR                                     |
+| ------------ | ---------------- | ------------------------- | -------------------------------------- |
+| 10           | 0.4627           | **0.4650** ← best   | 1.00e-03                               |
+| 14           | 0.4575           | 0.4657                    | 1.00e-03                               |
+| 15           | 0.4536           | 0.4774                    | 1.00e-03                               |
+| 16           | 0.4543           | 0.4777                    | **5.00e-04** ← 1ª redução LR  |
+| 19           | 0.4445           | **0.4646** ← best   | 5.00e-04                               |
+| **21** | **0.4435** | **0.4602** ← best   | 5.00e-04                               |
+| 26           | 0.4442           | 0.4691                    | 5.00e-04                               |
+| 27           | 0.4441           | 0.4687                    | **2.50e-04** ← 2ª redução LR  |
+| **28** | **0.4400** | **0.4592** ← best   | 2.50e-04                               |
+| 58           | 0.4360           | 0.4656                    | 7.81e-06                               |
+| 63           | 0.4341           | 0.4642                    | 7.81e-06                               |
+| 64           | 0.4348           | 0.4650                    | **3.91e-06** ← interrompido   |
 
-*(a preencher após o treino)*
+**Melhor val_loss:** `0.4592` (época 28) — escala combinada, não comparável com runs anteriores
+
+### Análise do treino
+
+- **Sem colapso** ✓ — a CombinedTverskyFocalLoss resolveu o problema da Tversky pura; modelo aprendeu normalmente desde a época 1
+- **Convergência rápida**: melhor checkpoint na época 28; a partir daí val_loss ficou travada em 0.463–0.469 com LR decaindo progressivamente
+- **Platô confirmado na época ~30**: após o best em ep.28, val_loss não melhorou nas 36 épocas seguintes; scheduler reduziu LR de 2.5e-4 → 7.81e-6 (6 reduções extras) sem progresso
+- **train_loss ainda decaindo** (0.4627 ep.10 → 0.4341 ep.63) enquanto val_loss estagnada → leve overfitting nos últimos epochs
+- A loss combinada impede comparação direta com runs anteriores; somente métricas de detecção (TP/FP/FN via `evaluate_detections.py`) revelam se o objetivo de Recall ≥ 80% foi atingido
+
+### Resultados da Validação (com filtros de pós-processamento)
+
+*(a preencher — executar `run_validation.py` + `scripts/evaluate_detections.py`)*
 
 ---
 
@@ -423,6 +441,7 @@ Os filtros de pós-processamento mostraram que grande parte dos falsos positivos
 - [X] Executar `scripts/evaluate_detections.py` contra os resultados de cada run — **concluído; Run 03 com t=0.7/min=200: Recall 49.9%, Precision 74.9%, F1 59.9%**
 - [X] Verificar quantas imagens do set de validação realmente contêm formigueiro — **593 GT positivas de 2.466 total (24.1%)**
 - [X] Experimento de sensibilidade de parâmetros (t=0.6, min=100) — **Recall +27.7 pp sem retreinar; confirmou lacuna de polarização de probabilidades**
-- [ ] **Run 04 — Tversky Loss (α=0.3, β=0.7)**: penaliza FN 2.3× mais que FP; objetivo Recall ≥ 80% mantendo Precision ~70%; `class_weight_anthill=6.0`, `threshold=0.6`, `min_px=100`
+- [X] **Run 04 — CombinedTverskyFocalLoss** — **treinado até ep.64; best val_loss=0.4592 (ep.28); platô confirmado; interrompido**
+- [ ] Executar `run_validation.py` + `scripts/evaluate_detections.py` com o checkpoint Run 04 para medir Recall/Precision/F1 reais
 - [ ] Adicionar BatchNorm à arquitetura U-Net para melhorar estabilidade e generalização
 - [ ] Avaliar uso de loss combinada (Tversky + Focal) se Run 04 não atingir Precision-alvo
