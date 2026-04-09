@@ -1,4 +1,4 @@
-# Training & Validation Experiments — UNet Anthill Segmentation
+# Training & Validation Experiments - UNet Anthill Segmentation
 
 Histórico completo de treinamento e validação do modelo U-Net para detecção de formigueiros em imagens aéreas.
 
@@ -8,20 +8,20 @@ Histórico completo de treinamento e validação do modelo U-Net para detecção
 
 | Termo                       | Significado                                                                                  |
 | --------------------------- | -------------------------------------------------------------------------------------------- |
-| **GT**                | Ground Truth — label anotada manualmente                                                    |
-| **mIoU**              | Mean Intersection over Union — média do IoU sobre todas as classes                         |
+| **GT**                | Ground Truth - label anotada manualmente                                                    |
+| **mIoU**              | Mean Intersection over Union - média do IoU sobre todas as classes                         |
 | **IoU**               | Interseção ÷ União entre predição e GT, por pixel                                      |
-| **Dice**              | `2×interseção / (pred + GT)` — equivalente ao F1 de pixels                             |
+| **Dice**              | `2×interseção / (pred + GT)` - equivalente ao F1 de pixels                             |
 | **TP / FP / FN / TN** | True/False Positive/Negative no nível de imagem                                             |
-| **Precision**         | `TP / (TP + FP)` — dos detectados, quantos eram reais                                     |
-| **Recall**            | `TP / (TP + FN)` — dos reais, quantos foram detectados                                    |
+| **Precision**         | `TP / (TP + FP)` - dos detectados, quantos eram reais                                     |
+| **Recall**            | `TP / (TP + FN)` - dos reais, quantos foram detectados                                    |
 | **F1 Score**          | `2 × Precision × Recall / (Precision + Recall)`                                          |
 | **Focal Loss**        | Variante da CE que down-pesa exemplos fáceis (γ > 0)                                       |
-| **Tversky Loss**      | `1 − TP / (TP + α·FP + β·FN)` — controla peso de FP (α) e FN (β) independentemente |
-| **BatchNorm**         | Batch Normalization — normaliza ativações por batch; estabiliza gradiente                 |
+| **Tversky Loss**      | `1 − TP / (TP + α·FP + β·FN)` - controla peso de FP (α) e FN (β) independentemente |
+| **BatchNorm**         | Batch Normalization - normaliza ativações por batch; estabiliza gradiente                 |
 | **ConvTranspose2d**   | Upsampling aprendido (vs bilinear fixo)                                                      |
-| **pp**                | Pontos percentuais — diferença absoluta entre dois valores %                               |
-| **LR**                | Learning Rate — taxa de aprendizado do Adam                                                 |
+| **pp**                | Pontos percentuais - diferença absoluta entre dois valores %                               |
+| **LR**                | Learning Rate - taxa de aprendizado do Adam                                                 |
 
 ---
 
@@ -85,26 +85,26 @@ model.eval()
 | **Épocas executadas**   | ~73          | 100          | ~48            | 64                    | 100                       |
 | **Função de loss**     | CrossEntropy | CrossEntropy | Focal (γ=2.0) | Tversky+Focal (50/50) | Tversky+CE (50/50)        |
 | **class_weight_anthill** | 10.0         | 6.0          | 4.0            | 6.0                   | 4.0                       |
-| **Tversky α / β**      | —           | —           | —             | 0.3 / 0.7             | 0.3 / 0.6                 |
+| **Tversky α / β**      | -           | -           | -             | 0.3 / 0.7             | 0.3 / 0.6                 |
 | **focal_loss_gamma**     | 0.0          | 0.0          | 2.0            | 2.0                   | 0.0                       |
 | **Scheduler patience**   | 3            | 5            | 5              | 5                     | 5                         |
 | **BatchNorm**            | Não         | Não         | Não           | Não                  | **Sim**             |
 | **Upsampling decoder**   | Bilinear     | Bilinear     | Bilinear       | Bilinear              | **ConvTranspose2d** |
-| **confidence_threshold** | —           | —           | 0.7            | 0.6                   | 0.6                       |
-| **min_region_px**        | —           | —           | 200            | 100                   | 100                       |
-| **max_region_px**        | —           | —           | 5.000          | 5.000                 | 5.000                     |
+| **confidence_threshold** | -           | -           | 0.7            | 0.6                   | 0.6                       |
+| **min_region_px**        | -           | -           | 200            | 100                   | 100                       |
+| **max_region_px**        | -           | -           | 5.000          | 5.000                 | 5.000                     |
 | **num_workers**          | 4            | 4            | 4              | 4                     | 5                         |
 | **Augmentações**       | Off          | On           | On             | On                    | On                        |
 | **Melhor val_loss**      | 0.0756       | 0.1227       | 0.0571         | 0.4592¹              | 0.2045¹                  |
 | **Época do best**       | ~33          | 26           | 42             | 28                    | 87                        |
 
-> ¹ Escala Tversky+CE diferente — não comparável com Runs 01–03.
+> ¹ Escala Tversky+CE diferente - não comparável com Runs 01–03.
 
 ---
 
-## Runs — Detalhamento
+## Runs - Detalhamento
 
-### Run 01 — Baseline sem augmentations
+### Run 01 - Baseline sem augmentations
 
 **Objetivo:** estabelecer linha de base sem regularização.
 
@@ -118,11 +118,11 @@ model.eval()
 | **33** | **0.0842** | **0.0756** ← best | 2.50e-4               |
 | 73           | 0.0755           | 0.0768                   | 4.88e-7 ← convergido |
 
-**Análise:** val_loss baixo (0.075) mas métricas reais ruins — modelo **memorizou** o dataset. Ausência de augmentations permitiu decorar padrões específicos sem generalizar.
+**Análise:** val_loss baixo (0.075) mas métricas reais ruins - modelo **memorizou** o dataset. Ausência de augmentations permitiu decorar padrões específicos sem generalizar.
 
 ---
 
-### Run 02 — Augmentations + ajuste de hiperparâmetros
+### Run 02 - Augmentations + ajuste de hiperparâmetros
 
 **Objetivo:** introduzir augmentations e reduzir overfitting.
 
@@ -134,15 +134,15 @@ model.eval()
 | 7            | 0.1521           | 0.1441                   | 1.00e-3                  |
 | 21           | 0.1370           | 0.1307                   | 5.00e-4 ← 1ª redução |
 | **26** | **0.1291** | **0.1227** ← best | 5.00e-4                  |
-| 100          | 0.1218           | 0.1178                   | —                       |
+| 100          | 0.1218           | 0.1178                   | -                       |
 
 **Pós-processamento (adicionado sem retreinar):** `confidence_threshold=0.7` · `min_region_px=200`
 
-**Análise:** augmentations tornaram o treino mais difícil (val_loss convergiu mais alto, esperado). A adição dos filtros de pós-processamento gerou ganho expressivo em mIoU (+23.7% relativo) sem novo treinamento — confirmando que o modelo produzia muitas predições de baixa confiança.
+**Análise:** augmentations tornaram o treino mais difícil (val_loss convergiu mais alto, esperado). A adição dos filtros de pós-processamento gerou ganho expressivo em mIoU (+23.7% relativo) sem novo treinamento - confirmando que o modelo produzia muitas predições de baixa confiança.
 
 ---
 
-### Run 03 — Focal Loss (γ=2.0)
+### Run 03 - Focal Loss (γ=2.0)
 
 **Objetivo:** forçar foco nos exemplos difíceis (solo ambíguo perto de formigueiros), reduzindo falsos positivos triviais.
 
@@ -164,11 +164,11 @@ model.eval()
 | t=0.7 · min=200px | 74.9%     | 49.9%  | 59.9% | 20.9%       |
 | t=0.6 · min=100px | 51.5%     | 77.6%  | 61.9% | 23.9%       |
 
-**Análise:** val_loss melhor de todos os runs (0.0571). Sensibilidade ao threshold revelou que o modelo já "via" os formigueiros — eles eram preditos com softmax 0.6–0.7, abaixo do threshold 0.7. **Lacuna de polarização** identificada: o modelo não tinha incentivo para empurrar probabilidades de formigueiro para ≥ 0.85.
+**Análise:** val_loss melhor de todos os runs (0.0571). Sensibilidade ao threshold revelou que o modelo já "via" os formigueiros - eles eram preditos com softmax 0.6–0.7, abaixo do threshold 0.7. **Lacuna de polarização** identificada: o modelo não tinha incentivo para empurrar probabilidades de formigueiro para ≥ 0.85.
 
 ---
 
-### Run 04 — CombinedTverskyFocalLoss (α=0.3, β=0.7)
+### Run 04 - CombinedTverskyFocalLoss (α=0.3, β=0.7)
 
 **Objetivo:** penalizar FN 2.3× mais que FP via Tversky Loss para forçar probabilidades mais polarizadas.
 
@@ -176,9 +176,9 @@ $$
 TL = 1 - \frac{TP}{TP + \alpha \cdot FP + \beta \cdot FN}
 $$
 
-> **⚠️ Incidente Run 04-a (Tversky pura):** primeira tentativa colapsou — `val_loss` travou em 0.3735 por 87 épocas. Com desbalanceamento extremo (~5–10% pixels de formigueiro), o termo `α×FP` domina o denominador e o gradiente empurra `anthill_prob → 0`. **Fix:** loss combinada com Focal como âncora.
+> **⚠️ Incidente Run 04-a (Tversky pura):** primeira tentativa colapsou - `val_loss` travou em 0.3735 por 87 épocas. Com desbalanceamento extremo (~5–10% pixels de formigueiro), o termo `α×FP` domina o denominador e o gradiente empurra `anthill_prob → 0`. **Fix:** loss combinada com Focal como âncora.
 
-**Curva de loss** *(escala Tversky+Focal — não comparável com Runs 01–03):*
+**Curva de loss** *(escala Tversky+Focal - não comparável com Runs 01–03):*
 
 | Época       | train_loss       | val_loss                 | LR                       |
 | ------------ | ---------------- | ------------------------ | ------------------------ |
@@ -188,13 +188,13 @@ $$
 | 58           | 0.4360           | 0.4656                   | 7.81e-6                  |
 | 64           | 0.4348           | 0.4650                   | 3.91e-6 ← interrompido  |
 
-**Análise:** sem colapso ✓, mas **platô precoce na época 28**. val_loss ficou travada em 0.463–0.469 por 36 épocas enquanto train_loss continuou caindo — leve overfitting. Hipótese: ausência de BatchNorm gerava gradientes instáveis impedindo aprendizado mais profundo.
+**Análise:** sem colapso ✓, mas **platô precoce na época 28**. val_loss ficou travada em 0.463–0.469 por 36 épocas enquanto train_loss continuou caindo - leve overfitting. Hipótese: ausência de BatchNorm gerava gradientes instáveis impedindo aprendizado mais profundo.
 
 *Validação numérica: a preencher (checkpoint não avaliado formalmente).*
 
 ---
 
-### Run 05 — BatchNorm + ConvTranspose2d + Tversky β=0.6
+### Run 05 - BatchNorm + ConvTranspose2d + Tversky β=0.6
 
 **Objetivo:** resolver instabilidade de gradiente (BatchNorm) e melhorar reconstrução de bordas (ConvTranspose2d).
 
@@ -205,7 +205,7 @@ $$
 | Normalização | Nenhuma                   | BatchNorm2d após cada Conv2d      |
 | Upsampling     | `nn.Upsample(bilinear)` | `nn.ConvTranspose2d` (aprendido) |
 
-**Curva de loss** *(escala Tversky+CE — não comparável com Runs 01–03):*
+**Curva de loss** *(escala Tversky+CE - não comparável com Runs 01–03):*
 
 | Época       | train_loss       | val_loss                 | LR                       |
 | ------------ | ---------------- | ------------------------ | ------------------------ |
@@ -217,13 +217,13 @@ $$
 | **87** | **0.1820** | **0.2045** ← best | 9.77e-7                  |
 | 99           | 0.1800           | 0.2720                   | 2.44e-7                  |
 
-**Análise:** convergência contínua até ep.87 — nunca entrou em platô prolongado como no Run 04. Overfitting leve nas últimas épocas (ep.99 val_loss > best). Checkpoint da época 87 é o ideal.
+**Análise:** convergência contínua até ep.87 - nunca entrou em platô prolongado como no Run 04. Overfitting leve nas últimas épocas (ep.99 val_loss > best). Checkpoint da época 87 é o ideal.
 
 ---
 
 ## Resultados Consolidados
 
-### Métricas de segmentação (validation_service — média por imagem)
+### Métricas de segmentação (validation_service - média por imagem)
 
 | Run              | Filtros                              | Pixel Acc        | mIoU             | Mean Dice        |
 | ---------------- | ------------------------------------ | ---------------- | ---------------- | ---------------- |
@@ -233,7 +233,7 @@ $$
 | Run 03           | t=0.7 · min=200px · max=5000px     | 0.6601           | 0.4347           | 0.4754           |
 | **Run 05** | **t=0.6 · min=100px · max=5000px** | **0.6605** | **0.4401** | **0.4819** |
 
-### Métricas de detecção por imagem (evaluate_detections — acumulado global)
+### Métricas de detecção por imagem (evaluate_detections - acumulado global)
 
 Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 
@@ -244,13 +244,13 @@ Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 | Run 03 · t=0.6 · min=100px     | 460           | 433          | 133          | 1.440           | 51.5%           | 77.6%           | 61.9%           |
 | **Run 05 · t=0.6 · min=100px** | **495** | **87** | **98** | **1.786** | **85.1%** | **83.5%** | **84.3%** |
 
-### Métricas de segmentação por pixel (evaluate_detections — acumulado global)
+### Métricas de segmentação por pixel (evaluate_detections - acumulado global)
 
 | Configuração                   | Pixel Acc       | IoU fundo       | IoU formigueiro | Dice formigueiro | mIoU            | Mean Dice       |
 | -------------------------------- | --------------- | --------------- | --------------- | ---------------- | --------------- | --------------- |
 | Run 02 · t=0.7 · min=200px     | 98.6%           | 98.6%           | 0.0%            | 0.0%             | 49.3%           | 49.6%           |
 | Run 03 · t=0.7 · min=200px     | 98.7%           | 98.7%           | 20.9%           | 34.5%            | 59.8%           | 66.9%           |
-| Run 03 · t=0.6 · min=100px     | —              | —              | 23.9%           | 38.6%            | 61.2%           | 68.9%           |
+| Run 03 · t=0.6 · min=100px     | -              | -              | 23.9%           | 38.6%            | 61.2%           | 68.9%           |
 | **Run 05 · t=0.6 · min=100px** | **98.9%** | **98.9%** | **35.2%** | **52.1%**  | **67.1%** | **75.8%** |
 
 > **Nota sobre diferença de mIoU:** `validation_service` reporta média de IoU *por imagem depois agrega* (~0.44 Run 05), enquanto `evaluate_detections` acumula pixels *globalmente* (~0.67 Run 05). O segundo é mais rigoroso para datasets desbalanceados.
@@ -272,11 +272,11 @@ Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 
 ## Próximos Passos
 
-- [X] Filtros de confiança e região mínima — **+23% mIoU relativo (Run 02 → Run 02+F)**
-- [X] Focal Loss (γ=2.0) — **melhor val_loss absoluto: 0.0571 (Run 03)**
-- [X] Filtro de região máxima (max 5.000px) — **implementado**
-- [X] Experimento de sensibilidade de parâmetros — **Recall +27.7 pp sem retreinar; lacuna de polarização confirmada**
-- [X] Run 04 — CombinedTverskyFocalLoss — **platô ep.28; interrompido ep.64**
-- [X] BatchNorm + ConvTranspose2d — **implementado no Run 05**
-- [X] Run 05 — **100 épocas completas; F1=84.3%; objetivo F1 ≥ 80% atingido**
-- [ ] Run 06 — investigar se aumentar dataset ou data augmentation mais agressiva melhora IoU anthill (35.2% ainda é o gap principal)
+- [X] Filtros de confiança e região mínima - **+23% mIoU relativo (Run 02 → Run 02+F)**
+- [X] Focal Loss (γ=2.0) - **melhor val_loss absoluto: 0.0571 (Run 03)**
+- [X] Filtro de região máxima (max 5.000px) - **implementado**
+- [X] Experimento de sensibilidade de parâmetros - **Recall +27.7 pp sem retreinar; lacuna de polarização confirmada**
+- [X] Run 04 - CombinedTverskyFocalLoss - **platô ep.28; interrompido ep.64**
+- [X] BatchNorm + ConvTranspose2d - **implementado no Run 05**
+- [X] Run 05 - **100 épocas completas; F1=84.3%; objetivo F1 ≥ 80% atingido**
+- [ ] Run 06 - investigar se aumentar dataset ou data augmentation mais agressiva melhora IoU anthill (35.2% ainda é o gap principal)
