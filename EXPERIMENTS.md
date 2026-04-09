@@ -1,59 +1,46 @@
 # Training & Validation Experiments — UNet Anthill Segmentation
 
-Histórico completo dos experimentos de treinamento e validação do modelo U-Net para detecção de formigueiros em imagens aéreas.
+Histórico completo de treinamento e validação do modelo U-Net para detecção de formigueiros em imagens aéreas.
 
 ---
 
-## Glossário de Siglas e Termos
+## Glossário
 
-| Sigla / Termo        | Significado                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **U-Net**      | Arquitetura de rede neural convolucional encoder-decoder com skip connections, projetada para segmentação de imagens |
-| **RGB**        | Red Green Blue — imagem colorida com 3 canais                                                                |
-| **GT**         | Ground Truth — label anotada manualmente, usada como referência para avaliação                             |
-| **mIoU**       | Mean Intersection over Union — média do IoU calculado sobre todas as classes (fundo + formigueiro)          |
-| **IoU**        | Intersection over Union — sobreposição pixel a pixel: área da interseção ÷ área da união entre predição e GT |
-| **Dice**       | Dice Coefficient (equivalente ao F1 de pixels) — `2×interseção / (pred + GT)`; mais sensível a regiões pequenas |
-| **TP**         | True Positive — imagem COM formigueiro na GT e que o modelo **detectou**                                    |
-| **FP**         | False Positive — imagem SEM formigueiro na GT mas que o modelo "detectou" (alarme falso)                    |
-| **FN**         | False Negative — imagem COM formigueiro na GT mas que o modelo **não detectou** (formigueiro perdido)       |
-| **TN**         | True Negative — imagem SEM formigueiro na GT e que o modelo corretamente não detectou                       |
-| **Precision**  | `TP / (TP + FP)` — dos que o modelo disse "tem formigueiro", quantos realmente tinham?                      |
-| **Recall**     | `TP / (TP + FN)` — dos que realmente tinham formigueiro, quantos o modelo encontrou?                        |
-| **F1 Score**   | `2 × Precision × Recall / (Precision + Recall)` — média harmônica entre Precision e Recall                 |
-| **LR**         | Learning Rate — taxa de aprendizado do otimizador Adam                                                       |
-| **val_loss**   | Validation Loss — valor da função de perda no conjunto de validação (sem gradient update)                   |
-| **train_loss** | Training Loss — valor da função de perda no conjunto de treino durante o forward pass                       |
-| **BCE**        | Binary Cross-Entropy — função de perda para classificação binária por pixel                                  |
-| **Focal Loss** | Variante da Cross-Entropy que reduz o peso de exemplos fáceis (γ > 0), focando o treino em casos difíceis  |
-| **γ (gamma)**  | Parâmetro do Focal Loss — valores maiores aumentam o foco em exemplos difíceis                              |
-| **Tversky Loss** | Função de perda derivada do Dice que permite controlar independentemente o peso de FP (α) e FN (β). Com β > α, penaliza mais os FN, otimizando diretamente o Recall |
-| **α (alpha)**  | Peso dos FP no denominador da Tversky Loss — menor α = mais tolerante a alarmes falsos                      |
-| **β (beta)**   | Peso dos FN no denominador da Tversky Loss — maior β = penaliza mais fortemente formigueiros não detectados |
-| **pp**         | Pontos percentuais — diferença absoluta entre dois valores percentuais (ex: 49% → 75% = +26 pp)             |
-| **CUDA**       | Compute Unified Device Architecture — plataforma de computação paralela em GPU NVIDIA                       |
-| **VRAM**       | Video RAM — memória da GPU usada para armazenar pesos e ativações durante treino/inferência                  |
-| **DataLoader** | Componente PyTorch que carrega batches de dados em paralelo durante treino e validação                       |
-| **BatchNorm**  | Batch Normalization — normaliza ativações por batch; melhora estabilidade e velocidade de convergência      |
-| **softmax**    | Função que converte logits em probabilidades somando 1.0 — usada na camada de saída da U-Net                |
-| **argmax**     | Retorna o índice da maior probabilidade — forma mais simples de classificação (equivale a threshold 0.5)     |
+| Termo                       | Significado                                                                                  |
+| --------------------------- | -------------------------------------------------------------------------------------------- |
+| **GT**                | Ground Truth — label anotada manualmente                                                    |
+| **mIoU**              | Mean Intersection over Union — média do IoU sobre todas as classes                         |
+| **IoU**               | Interseção ÷ União entre predição e GT, por pixel                                      |
+| **Dice**              | `2×interseção / (pred + GT)` — equivalente ao F1 de pixels                             |
+| **TP / FP / FN / TN** | True/False Positive/Negative no nível de imagem                                             |
+| **Precision**         | `TP / (TP + FP)` — dos detectados, quantos eram reais                                     |
+| **Recall**            | `TP / (TP + FN)` — dos reais, quantos foram detectados                                    |
+| **F1 Score**          | `2 × Precision × Recall / (Precision + Recall)`                                          |
+| **Focal Loss**        | Variante da CE que down-pesa exemplos fáceis (γ > 0)                                       |
+| **Tversky Loss**      | `1 − TP / (TP + α·FP + β·FN)` — controla peso de FP (α) e FN (β) independentemente |
+| **BatchNorm**         | Batch Normalization — normaliza ativações por batch; estabiliza gradiente                 |
+| **ConvTranspose2d**   | Upsampling aprendido (vs bilinear fixo)                                                      |
+| **pp**                | Pontos percentuais — diferença absoluta entre dois valores %                               |
+| **LR**                | Learning Rate — taxa de aprendizado do Adam                                                 |
 
 ---
 
-## Modelo — Arquitetura U-Net
+## Setup Geral
 
-| Componente              | Detalhe                                             |
-| ----------------------- | --------------------------------------------------- |
-| Arquitetura             | U-Net (encoder-decoder com skip connections)        |
-| Canais de entrada       | 3 (RGB)                                             |
-| Classes de saída       | 2 (fundo, formigueiro)                              |
-| Profundidade do encoder | 5 níveis (64 → 128 → 256 → 512 → 1024 filtros) |
-| Decoder                 | Bilinear upsample + double conv em cada nível      |
-| Camada de saída        | Conv2d 1×1 → 2 logits                             |
-| Normalização          | Nenhuma (sem BatchNorm)                             |
-| Ativação              | ReLU (inplace)                                      |
+### Arquitetura U-Net
 
-### Carregando os pesos
+| Componente                   | Detalhe                                             |
+| ---------------------------- | --------------------------------------------------- |
+| Tipo                         | Encoder-decoder com skip connections                |
+| Entrada                      | 3 canais (RGB)                                      |
+| Saída                       | 2 classes (fundo, formigueiro)                      |
+| Profundidade                 | 5 níveis (64 → 128 → 256 → 512 → 1024 filtros) |
+| Decoder (Runs 01–04)        | `nn.Upsample(bilinear)` + double conv             |
+| Decoder (Run 05+)            | `nn.ConvTranspose2d` + double conv                |
+| Normalização (Runs 01–04) | Nenhuma                                             |
+| Normalização (Run 05+)     | BatchNorm2d após cada Conv2d                       |
+| Ativação                   | ReLU (inplace)                                      |
+| Saída final                 | Conv2d 1×1 → 2 logits                             |
 
 ```python
 import torch
@@ -64,384 +51,232 @@ model.load_state_dict(torch.load("best_model_params.pth", map_location="cuda"))
 model.eval()
 ```
 
----
+### Dataset
 
-## Dataset
+| Item                  | Detalhe                                                             |
+| --------------------- | ------------------------------------------------------------------- |
+| Fonte                 | Google Drive (streaming) + local (`data/`)                        |
+| Pares de treino       | ~2.466 pares RGB + máscara                                         |
+| Pares de validação  | 2.466 pares RGB + máscara (593 GT positivas · 1.873 GT negativas) |
+| Formato das máscaras | PNG binário (0 = fundo · 1 = formigueiro · 255 = ignorar)        |
+| Tipo de imagem        | Ortofoto aérea RGB (drone/satélite)                               |
 
-| Item                  | Detalhe                                                  |
-| --------------------- | -------------------------------------------------------- |
-| Fonte                 | Google Drive (streaming) + local (`data/`)             |
-| Pares de treino       | ~2.466 pares RGB + máscara                              |
-| Pares de validação  | 2.466 pares RGB + máscara                               |
-| Formato das máscaras | PNG binário (0 = fundo, 1 = formigueiro, 255 = ignorar) |
-| Tipo de imagem        | Ortofoto aérea RGB (drone/satélite)                    |
+### Parâmetros fixos em todos os runs
 
----
-
-## Parâmetros Fixos (ambos os runs)
-
-| Parâmetro                   | Valor                                          |
-| ---------------------------- | ---------------------------------------------- |
-| Batch size                   | 4                                              |
-| Learning rate inicial        | 1e-3                                           |
-| Otimizador                   | Adam                                           |
-| Função de loss             | CrossEntropyLoss (ponderada, ignore_index=255) |
-| Peso classe fundo            | 1.0                                            |
-| Gradient clipping (max norm) | 1.0                                            |
-| LR scheduler                 | ReduceLROnPlateau (mode=min, factor=0.5)       |
-| Device                       | CUDA                                           |
-| Workers (DataLoader)         | 4                                              |
-| Preload dataset              | False (streaming do disco)                     |
+| Parâmetro               | Valor                                                        |
+| ------------------------ | ------------------------------------------------------------ |
+| Batch size               | 4                                                            |
+| Otimizador               | Adam                                                         |
+| Learning rate inicial    | 1e-3                                                         |
+| LR scheduler             | ReduceLROnPlateau (mode=min, patience variável, factor=0.5) |
+| Gradient clipping        | max_norm = 1.0                                               |
+| Device                   | CUDA                                                         |
+| Preload dataset          | False                                                        |
+| Augmentações (Run 01)  | Nenhuma                                                      |
+| Augmentações (Run 02+) | Flip H/V · Rotação 15° · Color jitter                   |
 
 ---
 
-## Run 01 — Baseline sem augmentations
+## Evolução dos Hiperparâmetros por Run
 
-**Data:** 2026-04-03
-**Checkpoint:** `best_model_params.pth`
-**Épocas configuradas:** 100 | **Épocas executadas:** ~73 (parado manualmente após convergência)
+| Parâmetro                     | Run 01       | Run 02       | Run 03         | Run 04                | Run 05                    |
+| ------------------------------ | ------------ | ------------ | -------------- | --------------------- | ------------------------- |
+| **Data**                 | 04-03        | 04-03→04    | 04-04→05      | 04-05→06             | 04-08→09                 |
+| **Épocas executadas**   | ~73          | 100          | ~48            | 64                    | 100                       |
+| **Função de loss**     | CrossEntropy | CrossEntropy | Focal (γ=2.0) | Tversky+Focal (50/50) | Tversky+CE (50/50)        |
+| **class_weight_anthill** | 10.0         | 6.0          | 4.0            | 6.0                   | 4.0                       |
+| **Tversky α / β**      | —           | —           | —             | 0.3 / 0.7             | 0.3 / 0.6                 |
+| **focal_loss_gamma**     | 0.0          | 0.0          | 2.0            | 2.0                   | 0.0                       |
+| **Scheduler patience**   | 3            | 5            | 5              | 5                     | 5                         |
+| **BatchNorm**            | Não         | Não         | Não           | Não                  | **Sim**             |
+| **Upsampling decoder**   | Bilinear     | Bilinear     | Bilinear       | Bilinear              | **ConvTranspose2d** |
+| **confidence_threshold** | —           | —           | 0.7            | 0.6                   | 0.6                       |
+| **min_region_px**        | —           | —           | 200            | 100                   | 100                       |
+| **max_region_px**        | —           | —           | 5.000          | 5.000                 | 5.000                     |
+| **num_workers**          | 4            | 4            | 4              | 4                     | 5                         |
+| **Augmentações**       | Off          | On           | On             | On                    | On                        |
+| **Melhor val_loss**      | 0.0756       | 0.1227       | 0.0571         | 0.4592¹              | 0.2045¹                  |
+| **Época do best**       | ~33          | 26           | 42             | 28                    | 87                        |
 
-### Parâmetros específicos
+> ¹ Escala Tversky+CE diferente — não comparável com Runs 01–03.
 
-| Parâmetro              | Valor     |
-| ----------------------- | --------- |
-| Peso classe formigueiro | 10.0      |
-| Scheduler patience      | 3 épocas |
-| Horizontal flip         | Off       |
-| Vertical flip           | Off       |
-| Rotação aleatória    | Off (0°) |
-| Color jitter            | Off       |
+---
 
-### Curva de Loss
+## Runs — Detalhamento
+
+### Run 01 — Baseline sem augmentations
+
+**Objetivo:** estabelecer linha de base sem regularização.
+
+**Curva de loss:**
 
 | Época       | train_loss       | val_loss                 | LR                    |
 | ------------ | ---------------- | ------------------------ | --------------------- |
 | 1            | 0.2785           | 0.1446                   | 1.00e-3               |
-| 3            | 0.1442           | 0.1081                   | 1.00e-3               |
 | 7            | 0.1261           | 0.1050                   | 1.00e-3               |
 | 24           | 0.0935           | 0.0809                   | 5.00e-4               |
-| 29           | 0.0856           | 0.0795                   | 2.50e-4               |
 | **33** | **0.0842** | **0.0756** ← best | 2.50e-4               |
-| 64           | 0.0756           | 0.0766                   | 1.95e-6               |
 | 73           | 0.0755           | 0.0768                   | 4.88e-7 ← convergido |
 
-**Melhor val_loss:** `0.0756` (época ~33)
-
-### Resultados da Validação
-
-**Diretório de saída:** `validation_results/` | **Threshold:** 0.1%
-
-| Métrica            | Valor                    |
-| ------------------- | ------------------------ |
-| Pixel Accuracy      | 0.6588 (65.9%)           |
-| **mIoU**      | **0.3718 (37.2%)** |
-| **Mean Dice** | **0.4186 (41.9%)** |
-
-### Análise
-
-- val_loss baixo (0.075) mas métricas reais ruins → modelo **memorizou** o dataset de treino
-- Ausência de augmentations permitiu decorar padrões específicos sem generalizar
+**Análise:** val_loss baixo (0.075) mas métricas reais ruins — modelo **memorizou** o dataset. Ausência de augmentations permitiu decorar padrões específicos sem generalizar.
 
 ---
 
-## Run 02 — Com augmentations e hyperparâmetros ajustados
+### Run 02 — Augmentations + ajuste de hiperparâmetros
 
-**Data:** 2026-04-03 → 2026-04-04
-**Checkpoint:** `best_model_params.pth`
-**Épocas configuradas:** 100 | **Épocas executadas:** 100 (completo)
-**Final loss:** 0.1218 | **Final val_loss:** 0.1178
+**Objetivo:** introduzir augmentations e reduzir overfitting.
 
-### Parâmetros alterados em relação ao Run 01
+**Curva de loss:**
 
-| Parâmetro              | Run 01 | Run 02         | Motivo                                     |
-| ----------------------- | ------ | -------------- | ------------------------------------------ |
-| Peso classe formigueiro | 10.0   | **6.0**  | Reduzir falsos positivos                   |
-| Scheduler patience      | 3      | **5**    | Evitar redução prematura do LR           |
-| Horizontal flip         | Off    | **On**   | Imagens aéreas sem orientação fixa      |
-| Vertical flip           | Off    | **On**   | Idem                                       |
-| Rotação aleatória    | 0°    | **15°** | Variação angular de drone                |
-| Color jitter            | Off    | **On**   | Diferentes condições de voo/iluminação |
+| Época       | train_loss       | val_loss                 | LR                       |
+| ------------ | ---------------- | ------------------------ | ------------------------ |
+| 1            | 0.3816           | 0.1939                   | 1.00e-3                  |
+| 7            | 0.1521           | 0.1441                   | 1.00e-3                  |
+| 21           | 0.1370           | 0.1307                   | 5.00e-4 ← 1ª redução |
+| **26** | **0.1291** | **0.1227** ← best | 5.00e-4                  |
+| 100          | 0.1218           | 0.1178                   | —                       |
 
-### Curva de Loss
+**Pós-processamento (adicionado sem retreinar):** `confidence_threshold=0.7` · `min_region_px=200`
 
-| Época       | train_loss       | val_loss                 | LR                    |
-| ------------ | ---------------- | ------------------------ | --------------------- |
-| 1            | 0.3816           | 0.1939                   | 1.00e-3               |
-| 3            | 0.1587           | 0.1480                   | 1.00e-3               |
-| 7            | 0.1521           | 0.1441                   | 1.00e-3               |
-| 21           | 0.1370           | 0.1307                   | 5.00e-4 ← LR reduziu |
-| 22           | 0.1314           | 0.1246                   | 5.00e-4               |
-| **26** | **0.1291** | **0.1227** ← best | 5.00e-4               |
-| 100          | 0.1218           | 0.1178                   | —                    |
-
-**Melhor val_loss:** `0.1227` (época 26)
-
-### Resultados da Validação
-
-**Diretório de saída:** `validation_results_run02/` | **Threshold:** 0.1%
-
-| Métrica            | Valor                    |
-| ------------------- | ------------------------ |
-| Pixel Accuracy      | 0.6568 (65.7%)           |
-| **mIoU**      | **0.3495 (35.0%)** |
-| **Mean Dice** | **0.3950 (39.5%)** |
-
-### Análise
-
-- Augmentations tornaram o treino mais difícil → val_loss convergiu mais alto (0.12 vs 0.075), esperado
-- Resultado ligeiramente inferior ao Run 01 — mais falsos positivos apesar da redução de peso da classe
-- Problema parece ser estrutural: distribuição diferente entre treino e validação
+**Análise:** augmentations tornaram o treino mais difícil (val_loss convergiu mais alto, esperado). A adição dos filtros de pós-processamento gerou ganho expressivo em mIoU (+23.7% relativo) sem novo treinamento — confirmando que o modelo produzia muitas predições de baixa confiança.
 
 ---
 
-## Run 02 + Filtros de Pós-processamento
+### Run 03 — Focal Loss (γ=2.0)
 
-**Data:** 2026-04-04
-**Checkpoint:** `best_model_params.pth` (mesmo do Run 02 — sem retreinar)
-**Diretório de saída:** `validation_results_run02_filtered/`
+**Objetivo:** forçar foco nos exemplos difíceis (solo ambíguo perto de formigueiros), reduzindo falsos positivos triviais.
 
-### Parâmetros de filtragem adicionados
+**Curva de loss:**
 
-| Parâmetro                       | Valor         | Descrição                                                                          |
-| -------------------------------- | ------------- | ------------------------------------------------------------------------------------ |
-| `anthill_confidence_threshold` | **0.7** | Pixel marcado como formigueiro somente se softmax ≥ 70% (substituiu argmax simples) |
-| `min_anthill_region_px`        | **200** | Grupos de pixels conectados com menos de 200 pixels são descartados como ruído     |
+| Época       | train_loss       | val_loss                 | LR                       |
+| ------------ | ---------------- | ------------------------ | ------------------------ |
+| 1            | 0.1188           | 0.0778                   | 1.00e-3                  |
+| 2            | 2.4146           | 0.0788                   | 1.00e-3 ← spike inicial |
+| 9            | 0.0622           | 0.0678                   | 1.00e-3                  |
+| 15           | 0.0605           | 0.0705                   | 5.00e-4 ← 1ª redução |
+| **42** | **0.0521** | **0.0571** ← best | 2.50e-4                  |
+| 48           | 0.0532           | 0.0589                   | 1.25e-4 ← interrompido  |
 
-### Resultados da Validação com Filtros
+**Experimento de sensibilidade de threshold (sem retreinar):**
 
-| Métrica            | Sem filtro (Run 02) | Com filtro       | Melhora          |
-| ------------------- | ------------------- | ---------------- | ---------------- |
-| Pixel Accuracy      | 0.6568              | **0.6601** | +0.003           |
-| **mIoU**      | 0.3495              | **0.4326** | **+0.083** |
-| **Mean Dice** | 0.3950              | **0.4739** | **+0.079** |
+| Configuração     | Precision | Recall | F1    | IoU anthill |
+| ------------------ | --------- | ------ | ----- | ----------- |
+| t=0.7 · min=200px | 74.9%     | 49.9%  | 59.9% | 20.9%       |
+| t=0.6 · min=100px | 51.5%     | 77.6%  | 61.9% | 23.9%       |
 
-### Análise
-
-- **mIoU +23.7% relativo** e **Mean Dice +19.97% relativo** apenas com pós-processamento, sem retreinar
-- O threshold de confiança (0.7) filtrou predições fracas; o filtro de região (200px) removeu fragmentos isolados
-- PixelAcc quase inalterada (esperado: o filtro remove regiões pequenas, que têm pouco peso no total de pixels)
+**Análise:** val_loss melhor de todos os runs (0.0571). Sensibilidade ao threshold revelou que o modelo já "via" os formigueiros — eles eram preditos com softmax 0.6–0.7, abaixo do threshold 0.7. **Lacuna de polarização** identificada: o modelo não tinha incentivo para empurrar probabilidades de formigueiro para ≥ 0.85.
 
 ---
 
-## Run 03 — Focal Loss + class_weight reduzido
+### Run 04 — CombinedTverskyFocalLoss (α=0.3, β=0.7)
 
-**Data:** 2026-04-04 → 2026-04-05
-**Checkpoint:** `best_model_params.pth`
-**Épocas configuradas:** 100 | **Épocas executadas:** ~48 (interrompido durante época 49)
+**Objetivo:** penalizar FN 2.3× mais que FP via Tversky Loss para forçar probabilidades mais polarizadas.
 
-### Parâmetros alterados em relação ao Run 02
+$$
+TL = 1 - \frac{TP}{TP + \alpha \cdot FP + \beta \cdot FN}
+$$
 
-| Parâmetro              | Run 02           | Run 03                       | Motivo                                                            |
-| ----------------------- | ---------------- | ---------------------------- | ----------------------------------------------------------------- |
-| Função de loss        | CrossEntropyLoss | **FocalLoss (γ=2.0)** | Foco nos exemplos difíceis (solo ambíguo perto de formigueiros) |
-| Peso classe formigueiro | 6.0              | **4.0**                | Reduzir falsos positivos com o Focal Loss compensando             |
+> **⚠️ Incidente Run 04-a (Tversky pura):** primeira tentativa colapsou — `val_loss` travou em 0.3735 por 87 épocas. Com desbalanceamento extremo (~5–10% pixels de formigueiro), o termo `α×FP` domina o denominador e o gradiente empurra `anthill_prob → 0`. **Fix:** loss combinada com Focal como âncora.
 
-### Curva de Loss
+**Curva de loss** *(escala Tversky+Focal — não comparável com Runs 01–03):*
 
-| Época       | train_loss       | val_loss                 | LR                                    |
-| ------------ | ---------------- | ------------------------ | ------------------------------------- |
-| 1            | 0.1188           | 0.0778                   | 1.00e-3                               |
-| 2            | 2.4146           | 0.0788                   | 1.00e-3 ← spike inicial Focal        |
-| 9            | 0.0622           | 0.0678                   | 1.00e-3                               |
-| 15           | 0.0605           | 0.0705                   | **5.00e-4** ← 1ª redução LR |
-| 16           | 0.0586           | 0.0663                   | 5.00e-4                               |
-| 28           | 0.0539           | 0.0602                   | 5.00e-4                               |
-| 30           | 0.0542           | 0.0591                   | 5.00e-4                               |
-| 36           | 0.0545           | 0.0596                   | **2.50e-4** ← 2ª redução LR |
-| 39           | 0.0527           | 0.0576                   | 2.50e-4                               |
-| **42** | **0.0521** | **0.0571** ← best | 2.50e-4                               |
-| 48           | 0.0532           | 0.0589                   | **1.25e-4** ← 3ª redução LR |
+| Época       | train_loss       | val_loss                 | LR                       |
+| ------------ | ---------------- | ------------------------ | ------------------------ |
+| 10           | 0.4627           | 0.4650                   | 1.00e-3                  |
+| 16           | 0.4543           | 0.4777                   | 5.00e-4 ← 1ª redução |
+| **28** | **0.4400** | **0.4592** ← best | 2.50e-4                  |
+| 58           | 0.4360           | 0.4656                   | 7.81e-6                  |
+| 64           | 0.4348           | 0.4650                   | 3.91e-6 ← interrompido  |
 
-**Melhor val_loss:** `0.0571` (época 42)
+**Análise:** sem colapso ✓, mas **platô precoce na época 28**. val_loss ficou travada em 0.463–0.469 por 36 épocas enquanto train_loss continuou caindo — leve overfitting. Hipótese: ausência de BatchNorm gerava gradientes instáveis impedindo aprendizado mais profundo.
 
-### Resultados da Validação (com filtros de pós-processamento)
-
-**Diretório de saída:** `validation_results_run3/` | **Filtros ativos:** confiança ≥ 0.7 · min 200px · max 5.000px
-
-| Métrica            | Valor                    |
-| ------------------- | ------------------------ |
-| Pixel Accuracy      | 0.6601 (66.0%)           |
-| **mIoU**      | **0.4347 (43.5%)** |
-| **Mean Dice** | **0.4754 (47.5%)** |
-
-## Run 04 — CombinedTverskyFocalLoss (α=0.3, β=0.7 + Focal γ=2.0)
-
-**Data:** 2026-04-05 → 2026-04-06
-**Checkpoint:** `best_model_params.pth`
-**Épocas configuradas:** 100 | **Épocas executadas:** 64 (interrompido manualmente — LR < 4e-6, platô confirmado)
-
-### Motivação
-
-O experimento de sensibilidade de parâmetros no Run 03 revelou que o modelo já detecta ~78% dos formigueiros, mas com probabilidade softmax entre 0.6–0.7 (abaixo do threshold padrão 0.7). Isso indica que o problema não é cegueira do modelo, mas **falta de polarização das probabilidades**: formigueiros verdadeiros ficam na faixa de ambiguidade enquanto o modelo não tem incentivo para empurrar essas predições para ≥ 0.85.
-
-A **Tversky Loss** penaliza FN 2.3× mais que FP, forçando o modelo a aprender representações mais confiantes para a classe formigueiro:
-
-$$TL = 1 - \frac{TP}{TP + \alpha \cdot FP + \beta \cdot FN}$$
-
-> **⚠️ Incidente Run 04-a (Tversky pura):** A primeira tentativa com Tversky Loss pura colapsou na época 1 — `val_loss` travou em **0.3735** por 87 épocas com LR decaindo até 6e-8. Diagnóstico: com desbalanço extremo (~5-10% pixels de formigueiro), o termo `α×FP` domina o denominador no início do treino e o gradiente empurra `anthill_prob → 0` para todos os pixels. Fix: loss combinada ancorada pela Focal Loss.
-
-### Parâmetros alterados em relação ao Run 03
-
-| Parâmetro                    | Run 03            | Run 04                                       | Motivo                                                             |
-| ----------------------------- | ----------------- | -------------------------------------------- | ------------------------------------------------------------------ |
-| Função de loss              | FocalLoss (γ=2.0) | **CombinedTverskyFocal (50% Tversky + 50% Focal)** | Tversky pura colapsa com desbalanço extremo; Focal ancora o treino |
-| Tversky α / β                | —                 | **α=0.3 · β=0.7**                      | FN penalizado 2.3× mais que FP; empurra Recall                   |
-| Focal γ (dentro da combined) | 2.0 (autônoma)    | **2.0** (componente da combined)       | Mantém foco em casos difíceis                                     |
-| class_weight_anthill         | 4.0               | **6.0**                                | Aplicado ao componente Focal da combined loss                      |
-| anthill_confidence_threshold | 0.7               | **0.6**                                | Threshold mais baixo para capturar mais formigueiros               |
-| min_anthill_region_px        | 200               | **100**                                | Reduz FN de formigueiros pequenos                                  |
-
-### Parâmetros inalterados
-
-| Parâmetro           | Valor |
-| -------------------- | ----- |
-| Batch size           | 4     |
-| Learning rate        | 1e-3  |
-| Otimizador           | Adam  |
-| Scheduler patience   | 5     |
-| Scheduler factor     | 0.5   |
-| Grad clip max norm   | 1.0   |
-| Augmentations        | Todas ativas (flip H/V, rot 15°, color jitter) |
-
-### Curva de Loss
-
-> **Nota:** A escala de val_loss **não é comparável** com os runs anteriores — a TverskyLoss contribui com valores em [0, 1] e a FocalLoss com valores ~0.06, resultando em combined_loss ~0.45 no início. Os valores de Run 01–03 eram somente Focal/CE.
-
-| Época       | train_loss       | val_loss                  | LR                                     |
-| ------------ | ---------------- | ------------------------- | -------------------------------------- |
-| 10           | 0.4627           | **0.4650** ← best   | 1.00e-03                               |
-| 14           | 0.4575           | 0.4657                    | 1.00e-03                               |
-| 15           | 0.4536           | 0.4774                    | 1.00e-03                               |
-| 16           | 0.4543           | 0.4777                    | **5.00e-04** ← 1ª redução LR  |
-| 19           | 0.4445           | **0.4646** ← best   | 5.00e-04                               |
-| **21** | **0.4435** | **0.4602** ← best   | 5.00e-04                               |
-| 26           | 0.4442           | 0.4691                    | 5.00e-04                               |
-| 27           | 0.4441           | 0.4687                    | **2.50e-04** ← 2ª redução LR  |
-| **28** | **0.4400** | **0.4592** ← best   | 2.50e-04                               |
-| 58           | 0.4360           | 0.4656                    | 7.81e-06                               |
-| 63           | 0.4341           | 0.4642                    | 7.81e-06                               |
-| 64           | 0.4348           | 0.4650                    | **3.91e-06** ← interrompido   |
-
-**Melhor val_loss:** `0.4592` (época 28) — escala combinada, não comparável com runs anteriores
-
-### Análise do treino
-
-- **Sem colapso** ✓ — a CombinedTverskyFocalLoss resolveu o problema da Tversky pura; modelo aprendeu normalmente desde a época 1
-- **Convergência rápida**: melhor checkpoint na época 28; a partir daí val_loss ficou travada em 0.463–0.469 com LR decaindo progressivamente
-- **Platô confirmado na época ~30**: após o best em ep.28, val_loss não melhorou nas 36 épocas seguintes; scheduler reduziu LR de 2.5e-4 → 7.81e-6 (6 reduções extras) sem progresso
-- **train_loss ainda decaindo** (0.4627 ep.10 → 0.4341 ep.63) enquanto val_loss estagnada → leve overfitting nos últimos epochs
-- A loss combinada impede comparação direta com runs anteriores; somente métricas de detecção (TP/FP/FN via `evaluate_detections.py`) revelam se o objetivo de Recall ≥ 80% foi atingido
-
-### Resultados da Validação (com filtros de pós-processamento)
-
-*(a preencher — executar `run_validation.py` + `scripts/evaluate_detections.py`)*
+*Validação numérica: a preencher (checkpoint não avaliado formalmente).*
 
 ---
 
-## Comparação entre Runs
+### Run 05 — BatchNorm + ConvTranspose2d + Tversky β=0.6
 
-| Métrica               | Run 01 | Run 02 | Run 02 + Filtros      | Run 03 + Filtros | Melhor                   |
-| ---------------------- | ------ | ------ | --------------------- | ---------------- | ------------------------ |
-| Best val_loss (treino) | 0.0756 | 0.1227 | 0.1227 (mesmo modelo) | **0.0571** | **Run 03**         |
-| Pixel Accuracy         | 0.6588 | 0.6568 | 0.6601                | **0.6601** | Run 02+F / Run 03+F      |
-| **mIoU**         | 0.3718 | 0.3495 | 0.4326                | **0.4347** | **Run 03+Filtros** |
-| **Mean Dice**    | 0.4186 | 0.3950 | 0.4739                | **0.4754** | **Run 03+Filtros** |
+**Objetivo:** resolver instabilidade de gradiente (BatchNorm) e melhorar reconstrução de bordas (ConvTranspose2d).
 
----
+**Mudanças arquiteturais:**
 
-## Avaliação de Detecção vs Ground Truth
+| Componente     | Run 04                    | Run 05                             |
+| -------------- | ------------------------- | ---------------------------------- |
+| Normalização | Nenhuma                   | BatchNorm2d após cada Conv2d      |
+| Upsampling     | `nn.Upsample(bilinear)` | `nn.ConvTranspose2d` (aprendido) |
 
-Métricas medidas pelo script `scripts/evaluate_detections.py`, comparando as máscaras de predição geradas por `run_validation.py` diretamente contra as labels RGB do set de validação.
+**Curva de loss** *(escala Tversky+CE — não comparável com Runs 01–03):*
 
-> **Dataset de referência:** 2.466 imagens · **593 GT positivas** (contêm formigueiro) · **1.873 GT negativas**
+| Época       | train_loss       | val_loss                 | LR                       |
+| ------------ | ---------------- | ------------------------ | ------------------------ |
+| 1            | 0.4390           | 0.4652                   | 1.00e-3                  |
+| 9            | 0.3449           | 0.2563                   | 1.00e-3                  |
+| 16           | 0.2687           | 0.2466                   | 5.00e-4 ← 1ª redução |
+| 29           | 0.2115           | 0.2207                   | 2.50e-4                  |
+| 57           | 0.1918           | 0.2122                   | 1.56e-5                  |
+| **87** | **0.1820** | **0.2045** ← best | 9.77e-7                  |
+| 99           | 0.1800           | 0.2720                   | 2.44e-7                  |
 
-### Detecção no nível de imagem
-
-| Métrica            | Run 02 (t=0.7, min=200) | Run 03 (t=0.7, min=200) | Variação |
-| ------------------- | ----------------------- | ----------------------- | ---------- |
-| Pred positivas      | 11                      | 395                     | +384       |
-| TP                  | 0                       | **296**           | +296       |
-| FP (alarme falso)   | 11                      | 99                      | +88        |
-| FN (perdido)        | 593                     | **297**           | −296      |
-| TN                  | 1862                    | **1774**          | −88       |
-| **Precision** | 0.0%                    | **74.9%**         | +74.9 pp   |
-| **Recall**    | 0.0%                    | **49.9%**         | +49.9 pp   |
-| **F1 Score**  | 0.0%                    | **59.9%**         | +59.9 pp   |
-
-### Segmentação no nível de pixel
-
-| Métrica            | Run 02 (t=0.7, min=200) | Run 03 (t=0.7, min=200) | Variação         |
-| ------------------- | ----------------------- | ----------------------- | ------------------ |
-| Pixel Accuracy      | 98.6%                   | **98.7%**         | +0.1 pp            |
-| IoU — fundo        | 98.6%                   | **98.7%**         | +0.1 pp            |
-| IoU — formigueiro  | 0.0%                    | **20.9%**         | +20.9 pp           |
-| Dice — fundo       | 99.3%                   | **99.4%**         | +0.1 pp            |
-| Dice — formigueiro | 0.0%                    | **34.5%**         | +34.5 pp           |
-| **mIoU**      | 49.3%                   | **59.8%**         | **+10.5 pp** |
-| **Mean Dice** | 49.6%                   | **66.9%**         | **+17.3 pp** |
-
-### Análise
-
-- **Run 02 com filtros detectou praticamente nada** (11 predições, 0 TP): o modelo Run 02 produz predições mais fracas e dispersas — o filtro de confiança 0.7 + regiões ≥ 200 px elimina quase tudo, deixando apenas 11 imagens com alguma detecção, todas falsos positivos.
-- **Run 03 Precision = 74.9%**: quando o modelo detecta, 3 em cada 4 imagens realmente têm formigueiro — o filtro de confiança está funcionando bem para qualidade.
-- **Run 03 Recall = 49.9%**: o modelo ainda perde ~metade dos formigueiros presentes no set de validação — principal gap a resolver em próximos runs.
-- **IoU de Anthill (20.9%)** vs mIoU reportado pela validation_service (43.5%): a diferença se deve ao método de cálculo — `evaluate_detections.py` acumula pixels globalmente sobre todo o dataset (mais rigoroso), enquanto `validation_service` faz média de IoU por imagem e depois agrega.
+**Análise:** convergência contínua até ep.87 — nunca entrou em platô prolongado como no Run 04. Overfitting leve nas últimas épocas (ep.99 val_loss > best). Checkpoint da época 87 é o ideal.
 
 ---
 
-### Experimento de Sensibilidade de Parâmetros — Run 03 (t=0.6, min=100px)
+## Resultados Consolidados
 
-Sem retreinar o modelo, apenas reduzindo o threshold de confiança (0.7 → 0.6) e a região mínima (200 → 100 px):
+### Métricas de segmentação (validation_service — média por imagem)
 
-#### Detecção no nível de imagem
+| Run              | Filtros                              | Pixel Acc        | mIoU             | Mean Dice        |
+| ---------------- | ------------------------------------ | ---------------- | ---------------- | ---------------- |
+| Run 01           | t=0.1%                               | 0.6588           | 0.3718           | 0.4186           |
+| Run 02           | sem filtro                           | 0.6568           | 0.3495           | 0.3950           |
+| Run 02           | t=0.7 · min=200px                   | 0.6601           | 0.4326           | 0.4739           |
+| Run 03           | t=0.7 · min=200px · max=5000px     | 0.6601           | 0.4347           | 0.4754           |
+| **Run 05** | **t=0.6 · min=100px · max=5000px** | **0.6605** | **0.4401** | **0.4819** |
 
-| Métrica            | Run 03 (t=0.7, min=200) | Run 03 (t=0.6, min=100) | Variação            |
-| ------------------- | ----------------------- | ----------------------- | --------------------- |
-| Pred positivas      | 395                     | 893                     | +498                  |
-| TP                  | 296                     | **460**           | **+164**        |
-| FP (alarme falso)   | 99                      | 433                     | +334                  |
-| FN (perdido)        | 297                     | **133**           | **−164**        |
-| TN                  | 1774                    | 1440                    | −334                  |
-| **Precision** | 74.9%                   | 51.5%                   | −23.4 pp              |
-| **Recall**    | 49.9%                   | **77.6%**         | **+27.7 pp**    |
-| **F1 Score**  | 59.9%                   | **61.9%**         | +2.0 pp               |
+### Métricas de detecção por imagem (evaluate_detections — acumulado global)
 
-#### Segmentação no nível de pixel
+Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 
-| Métrica            | Run 03 (t=0.7, min=200) | Run 03 (t=0.6, min=100) | Variação         |
-| ------------------- | ----------------------- | ----------------------- | ------------------ |
-| IoU — formigueiro  | 20.9%                   | **23.9%**         | +3.0 pp            |
-| Dice — formigueiro | 34.5%                   | **38.6%**         | +4.1 pp            |
-| **mIoU**      | 59.8%                   | **61.2%**         | +1.4 pp            |
-| **Mean Dice** | 66.9%                   | **68.9%**         | +2.0 pp            |
+| Configuração                   | TP            | FP           | FN           | TN              | Precision       | Recall          | F1              |
+| -------------------------------- | ------------- | ------------ | ------------ | --------------- | --------------- | --------------- | --------------- |
+| Run 02 · t=0.7 · min=200px     | 0             | 11           | 593          | 1.862           | 0.0%            | 0.0%            | 0.0%            |
+| Run 03 · t=0.7 · min=200px     | 296           | 99           | 297          | 1.774           | 74.9%           | 49.9%           | 59.9%           |
+| Run 03 · t=0.6 · min=100px     | 460           | 433          | 133          | 1.440           | 51.5%           | 77.6%           | 61.9%           |
+| **Run 05 · t=0.6 · min=100px** | **495** | **87** | **98** | **1.786** | **85.1%** | **83.5%** | **84.3%** |
 
-#### Análise do experimento
+### Métricas de segmentação por pixel (evaluate_detections — acumulado global)
 
-- **+27.7 pp de Recall sem retreinar** confirma que o modelo Run 03 já "vê" a maioria dos formigueiros — eles estão sendo preditos com probabilidade softmax entre 0.6 e 0.7, portanto abaixo do threshold padrão 0.7.
-- **Precision caiu de 74.9% → 51.5%**: no limiar 0.6, o modelo passa a incluir regiões de solo avermelhado ou textura ambígua que parecem formigueiros a 60-70% de confiança — falsos positivos que o threshold 0.7 antes filtrava.
-- **Conclusão crítica**: o modelo não é cego a formigueiros — ele os detecta, mas não consegue separá-los com confiança suficiente do ruído de fundo. O gap está na **falta de polarização das probabilidades**: formigueiros verdadeiros ficam em 0.6–0.7 enquanto o ideal seria ≥ 0.85–0.90.
-- **Solução**: uma função de perda que penalize FN mais pesadamente que FP força o modelo a aprender probabilidades mais polarizadas para a classe formigueiro → **Tversky Loss** (Run 04).
+| Configuração                   | Pixel Acc       | IoU fundo       | IoU formigueiro | Dice formigueiro | mIoU            | Mean Dice       |
+| -------------------------------- | --------------- | --------------- | --------------- | ---------------- | --------------- | --------------- |
+| Run 02 · t=0.7 · min=200px     | 98.6%           | 98.6%           | 0.0%            | 0.0%             | 49.3%           | 49.6%           |
+| Run 03 · t=0.7 · min=200px     | 98.7%           | 98.7%           | 20.9%           | 34.5%            | 59.8%           | 66.9%           |
+| Run 03 · t=0.6 · min=100px     | —              | —              | 23.9%           | 38.6%            | 61.2%           | 68.9%           |
+| **Run 05 · t=0.6 · min=100px** | **98.9%** | **98.9%** | **35.2%** | **52.1%**  | **67.1%** | **75.8%** |
+
+> **Nota sobre diferença de mIoU:** `validation_service` reporta média de IoU *por imagem depois agrega* (~0.44 Run 05), enquanto `evaluate_detections` acumula pixels *globalmente* (~0.67 Run 05). O segundo é mais rigoroso para datasets desbalanceados.
 
 ---
 
-## Diagnóstico
+## Diagnóstico e Aprendizados
 
-Os filtros de pós-processamento mostraram que grande parte dos falsos positivos era ruído de baixa confiança e fragmentos isolados — não uma falha fundamental do modelo.
+| Problema identificado                          | Evidência                                                       | Solução aplicada                     | Run      |
+| ---------------------------------------------- | ---------------------------------------------------------------- | -------------------------------------- | -------- |
+| Memorização (overfitting severo)             | val_loss 0.075 mas métricas ruins                               | Augmentations                          | Run 02   |
+| Predições de baixa confiança (ruído)       | mIoU +23.7% só com filtros, sem retreinar                       | Filtro de confiança + região mínima | Run 02+F |
+| Foco em exemplos triviais (solo limpo)         | Focal Loss reduziu val_loss 0.12 → 0.057                        | Focal Loss γ=2.0                      | Run 03   |
+| Lacuna de polarização de probabilidades      | Formigueiros preditos com softmax 0.6–0.7 (abaixo do threshold) | Tversky Loss (penaliza FN)             | Run 04   |
+| Tversky pura colapsa com desbalanceamento      | val_loss travado em 0.37 por 87 épocas                          | Loss combinada Tversky+Focal/CE        | Run 04   |
+| Platô precoce (ep.28) e gradientes instáveis | val_loss estagnado enquanto train_loss caía                     | BatchNorm2d + ConvTranspose2d          | Run 05   |
 
-### Hipóteses restantes
+---
 
-1. **Distribution shift** — imagens de voos, datas, sensores ou condições diferentes entre treino e validação. O modelo aprende padrões que não se transferem.
-2. **Dataset pequeno** — poucos exemplos únicos de formigueiros dificultam o aprendizado de bordas e formas precisas, resultando em IoU moderado.
+## Próximos Passos
 
-### Próximos passos recomendados
-
-- [X] Filtro de confiança e região mínima — **implementado, +23% mIoU (Run 02→02+F)**
-- [X] Focal Loss (γ=2.0) — **implementado no Run 03, melhor val_loss absoluto: 0.0571**
-- [X] Filtro de tamanho máximo de região (max 5.000px) — **implementado**
-- [X] Executar `scripts/evaluate_detections.py` contra os resultados de cada run — **concluído; Run 03 com t=0.7/min=200: Recall 49.9%, Precision 74.9%, F1 59.9%**
-- [X] Verificar quantas imagens do set de validação realmente contêm formigueiro — **593 GT positivas de 2.466 total (24.1%)**
-- [X] Experimento de sensibilidade de parâmetros (t=0.6, min=100) — **Recall +27.7 pp sem retreinar; confirmou lacuna de polarização de probabilidades**
-- [X] **Run 04 — CombinedTverskyFocalLoss** — **treinado até ep.64; best val_loss=0.4592 (ep.28); platô confirmado; interrompido**
-- [ ] Executar `run_validation.py` + `scripts/evaluate_detections.py` com o checkpoint Run 04 para medir Recall/Precision/F1 reais
-- [ ] Adicionar BatchNorm à arquitetura U-Net para melhorar estabilidade e generalização
-- [ ] Avaliar uso de loss combinada (Tversky + Focal) se Run 04 não atingir Precision-alvo
+- [X] Filtros de confiança e região mínima — **+23% mIoU relativo (Run 02 → Run 02+F)**
+- [X] Focal Loss (γ=2.0) — **melhor val_loss absoluto: 0.0571 (Run 03)**
+- [X] Filtro de região máxima (max 5.000px) — **implementado**
+- [X] Experimento de sensibilidade de parâmetros — **Recall +27.7 pp sem retreinar; lacuna de polarização confirmada**
+- [X] Run 04 — CombinedTverskyFocalLoss — **platô ep.28; interrompido ep.64**
+- [X] BatchNorm + ConvTranspose2d — **implementado no Run 05**
+- [X] Run 05 — **100 épocas completas; F1=84.3%; objetivo F1 ≥ 80% atingido**
+- [ ] Run 06 — investigar se aumentar dataset ou data augmentation mais agressiva melhora IoU anthill (35.2% ainda é o gap principal)
