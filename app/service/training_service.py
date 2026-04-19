@@ -247,7 +247,7 @@ class TrainingService:
         val_loader: DataLoader[tuple],
         criterion: nn.Module,
         optimizer: optim.Optimizer,
-        scheduler: optim.lr_scheduler.ReduceLROnPlateau,
+        scheduler: optim.lr_scheduler.LRScheduler,
         num_epochs: int,
         scaler: torch.amp.GradScaler,
     ) -> None:
@@ -258,7 +258,7 @@ class TrainingService:
         # corrupting model weights after just a few updates.  Pure FP32 is safe.
         use_amp = False
         total_batches = len(train_loader)
-        log_every = 50  # log every 50 batches regardless of dataset size
+        log_every = 250  # log every 250 batches regardless of dataset size
 
         for epoch in range(num_epochs):
             self._state.current_epoch = epoch + 1
@@ -360,7 +360,10 @@ class TrainingService:
             # --- validate ---
             val_loss = self._evaluate_loop_sync(val_loader, criterion)
             self._state.val_loss = val_loss
-            scheduler.step(val_loss)
+            if isinstance(scheduler, optim.lr_scheduler.ReduceLROnPlateau):
+                scheduler.step(val_loss)
+            else:
+                scheduler.step()
 
             current_lr = optimizer.param_groups[0]["lr"]
             logger.info(
@@ -483,12 +486,29 @@ class TrainingService:
         else:
             criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=255)
         optimizer = optim.Adam(self._model.parameters(), lr=lr)
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode="min",
-            factor=settings.scheduler_factor,
-            patience=settings.scheduler_patience,
-        )
+        if settings.use_cosine_scheduler:
+            scheduler: optim.lr_scheduler.LRScheduler = optim.lr_scheduler.CosineAnnealingLR(
+                optimizer,
+                T_max=epochs,
+                eta_min=settings.cosine_eta_min,
+            )
+            logger.info(
+                "LR scheduler: CosineAnnealingLR (T_max={}, eta_min={})",
+                epochs,
+                settings.cosine_eta_min,
+            )
+        else:
+            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer,
+                mode="min",
+                factor=settings.scheduler_factor,
+                patience=settings.scheduler_patience,
+            )
+            logger.info(
+                "LR scheduler: ReduceLROnPlateau (patience={}, factor={})",
+                settings.scheduler_patience,
+                settings.scheduler_factor,
+            )
         # GradScaler disabled: AMP is off in _train_loop, so the scaler is a
         # passthrough kept only to avoid restructuring the training loop.
         scaler = torch.amp.GradScaler("cuda", enabled=False)

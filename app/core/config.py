@@ -108,7 +108,7 @@ class Settings(BaseSettings):
     #   1.0  → mild focus on hard examples
     #   2.0  → standard Focal Loss (recommended for imbalanced segmentation)
     #   Applied in: training_service.py when tversky_alpha=0 and gamma > 0
-    focal_loss_gamma: float = 0.0
+    focal_loss_gamma: float = 2.0
 
     # tversky_alpha / tversky_beta: weights for FP and FN in Tversky Loss.
     # TL = 1 - TP / (TP + alpha*FP + beta*FN)
@@ -119,8 +119,8 @@ class Settings(BaseSettings):
     #       class_weight_anthill — the beta parameter replaces that role.
     #   Applied in: training_service.py when both alpha and beta > 0 (takes
     #               priority over focal_loss_gamma)
-    tversky_alpha: float = 0.3   # UNET_TVERSKY_ALPHA
-    tversky_beta: float = 0.6    # UNET_TVERSKY_BETA
+    tversky_alpha: float = 0.1   # UNET_TVERSKY_ALPHA
+    tversky_beta: float = 0.9    # UNET_TVERSKY_BETA
 
     # tversky_loss_weight: fraction of the combined loss assigned to Tversky.
     # The remaining (1 - tversky_loss_weight) goes to Focal Loss.
@@ -130,7 +130,7 @@ class Settings(BaseSettings):
     #   0.7 → stronger Recall push (use if Recall is still insufficient after run)
     #   0.0 → disables Tversky (pure Focal Loss — same as focal_loss_gamma > 0 path)
     #   Applied in: CombinedTverskyFocalLoss when tversky_alpha > 0 and beta > 0
-    tversky_loss_weight: float = 0.5   # UNET_TVERSKY_LOSS_WEIGHT
+    tversky_loss_weight: float = 0.85   # UNET_TVERSKY_LOSS_WEIGHT
 
     # grad_clip_max_norm: maximum L2 norm allowed for the full gradient vector.
     # Prevents exploding gradients (critical for UNets without BatchNorm).
@@ -150,7 +150,22 @@ class Settings(BaseSettings):
     #   ↑ larger  → gives more time before reducing LR; good for noisy datasets
     #   ↓ smaller → reacts faster to plateaus; risk of reducing LR too early
     #   Applied in: ReduceLROnPlateau(patience=...) in training_service.py
+    #   Ignored when use_cosine_scheduler=True.
     scheduler_patience: int = 5
+
+    # use_cosine_scheduler: swap ReduceLROnPlateau for CosineAnnealingLR.
+    # CosineAnnealingLR follows a fixed cosine decay over num_epochs, making it
+    # immune to noisy val_loss (e.g. caused by WeightedRandomSampler).  This
+    # prevents the scheduler from freezing the LR too early on a noisy curve.
+    #   True  → CosineAnnealingLR (T_max=num_epochs, eta_min=cosine_eta_min)
+    #   False → original ReduceLROnPlateau behaviour
+    #   Applied in: training_service.py start_training
+    use_cosine_scheduler: bool = True   # UNET_USE_COSINE_SCHEDULER
+
+    # cosine_eta_min: lower bound LR at the end of the cosine cycle.
+    #   Keeps a tiny update rate alive even at the last epoch.
+    #   Applied in: CosineAnnealingLR(eta_min=...) when use_cosine_scheduler=True
+    cosine_eta_min: float = 1e-6   # UNET_COSINE_ETA_MIN
 
     # ── Training — data augmentations ─────────────────────────────────────────
     # All augmentations are applied jointly to the image AND the mask so spatial
@@ -188,6 +203,33 @@ class Settings(BaseSettings):
     #   0.0 → no change  |  keep low (0.1) to avoid unnatural colours
     aug_color_jitter_saturation: float = 0.1
 
+    # aug_random_rotate_90: randomly rotate by 90°, 180°, or 270° (p=0.5).
+    # Complementary to aug_rotation_degrees which handles small angles.
+    # Particularly useful for aerial imagery where orientation is arbitrary.
+    aug_random_rotate_90: bool = False
+
+    # aug_elastic_transform: apply ElasticTransform to deform object borders.
+    # Creates realistic shape variations of anthill boundaries, improving
+    # generalisation with a limited number of positive examples.
+    aug_elastic_transform: bool = True
+
+    # aug_elastic_alpha: intensity of the elastic displacement field.
+    #   ↑ larger → stronger deformation  |  50-80 is a good range for 256px tiles
+    aug_elastic_alpha: float = 25.0
+
+    # aug_elastic_sigma: smoothness of the displacement field.
+    #   ↑ larger → smoother, more global deformation  |  5-7 is typical
+    aug_elastic_sigma: float = 4.0
+
+    # aug_copy_paste: paste random anthill regions from positive tiles onto
+    # negative tiles during training.  Creates genuinely new training examples
+    # instead of merely repeating existing positive tiles via oversampling.
+    aug_copy_paste: bool = True
+
+    # aug_copy_paste_prob: probability of applying copy-paste to a negative tile.
+    #   0.5 → half of negative tiles get a pasted anthill each epoch
+    aug_copy_paste_prob: float = 0.1
+
     # ── Data ──────────────────────────────────────────────────────────────────
     # data_mode: where images come from.
     #   "local"  → reads from local_data_dir on disk (fast, no internet needed)
@@ -221,7 +263,7 @@ class Settings(BaseSettings):
     #   0.5  → same as argmax (default behaviour — accept any majority vote)
     #   0.7  → only mark pixel as anthill if model is ≥70% confident
     #   0.9  → very conservative; reduces false positives significantly
-    anthill_confidence_threshold: float = 0.6
+    anthill_confidence_threshold: float = 0.5
 
     # min_anthill_region_px: minimum number of connected pixels to keep as a valid
     # anthill detection. Isolated fragments smaller than this are removed (set to

@@ -60,8 +60,30 @@ def create_train_transforms() -> transforms.Compose | None:
     if settings.aug_vertical_flip:
         transform_list.append(transforms.RandomVerticalFlip())
 
+    # RandomChoice among [0°, 90°, 180°, 270°] — safe for aerial imagery
+    # which has no fixed orientation.  Applied with p=0.5.
+    if settings.aug_random_rotate_90:
+        transform_list.append(
+            transforms.RandomApply(
+                [transforms.RandomChoice([
+                    transforms.RandomRotation((90, 90)),
+                    transforms.RandomRotation((180, 180)),
+                    transforms.RandomRotation((270, 270)),
+                ])],
+                p=0.5,
+            )
+        )
+
     if settings.aug_rotation_degrees > 0:
         transform_list.append(transforms.RandomRotation(settings.aug_rotation_degrees))
+
+    if settings.aug_elastic_transform:
+        transform_list.append(
+            transforms.RandomApply(
+                [transforms.ElasticTransform(alpha=settings.aug_elastic_alpha, sigma=settings.aug_elastic_sigma)],
+                p=0.3,
+            )
+        )
 
     if not transform_list:
         return None
@@ -253,6 +275,8 @@ class DataService:
             augmentations=create_train_transforms(),
             image_only_transforms=create_image_only_transforms(),
             preload=settings.preload_dataset,
+            copy_paste=settings.aug_copy_paste,
+            copy_paste_prob=settings.aug_copy_paste_prob,
         )
         val_dataset = SegmentationDataset(
             rgb_dir=val_rgb_dir,
