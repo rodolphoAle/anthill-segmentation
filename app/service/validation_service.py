@@ -273,14 +273,14 @@ class ValidationService:
                 )
                 saved = True
 
-            logger.info(
-                "[{}/{}] {:.1f}% anthill{}  '{}'",
-                idx,
-                len(pairs),
-                anthill_pct,
-                " ✓ saved" if saved else "",
-                rgb_meta["name"],
-            )
+            # logger.info(
+            #     "[{}/{}] {:.1f}% anthill{}  '{}'",
+            #     idx,
+            #     len(pairs),
+            #     anthill_pct,
+            #     " ✓ saved" if saved else "",
+            #     rgb_meta["name"],
+            # )
 
         metrics.pixel_accuracy = total_correct / max(total_pixels, 1)
         metrics.mean_iou = float(np.mean(metrics.per_image_iou))

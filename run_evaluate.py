@@ -34,12 +34,14 @@ from typing import Optional
 
 import numpy as np
 from PIL import Image
+from loguru import logger  # type: ignore
 
 # Ensure the repo root (parent of scripts/) is on sys.path so that `app`
 # is importable when the script is invoked as `python scripts/evaluate_detections.py`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.core.config import settings  # noqa: E402
+from app.core.logging_config import setup_logging  # noqa: E402
 from app.infrastructure.google_drive_client import GoogleDriveClient  # noqa: E402
 from app.service.data_service import DataService  # noqa: E402
 
@@ -375,16 +377,17 @@ def _parse_args() -> argparse.Namespace:
 
 async def main() -> None:
     args = _parse_args()
+    setup_logging()
 
     pred_dir = Path(args.pred_dir)
     save_dir = Path(args.save_dir)
-    print(f"Evaluation started with settings: {args}\n mode = {settings.data_mode}\n")
+    logger.info(f"Evaluation started with settings: {args}\n mode = {settings.data_mode}\n")
     if settings.data_mode == "online":
-        print("Online mode — downloading validation data from Google Drive…", flush=True)
+        logger.info("Online mode — downloading validation data from Google Drive…")
         drive_client = GoogleDriveClient()
         data_service = DataService(storage_client=drive_client)
         labels_dir, rgb_dir = await data_service.download_validation_from_drive()
-        print(f"Download complete → labels: {labels_dir}  rgb: {rgb_dir}\n", flush=True)
+        logger.info(f"Download complete → labels: {labels_dir}  rgb: {rgb_dir}\n")
     else:
         labels_dir = Path(args.labels_dir)
         rgb_dir = Path(args.rgb_dir)
@@ -393,23 +396,22 @@ async def main() -> None:
     fp_dir = save_dir / "somente_resultado"  # FP: anthill in prediction only
 
     if not pred_dir.exists():
-        print(f"ERROR: pred-dir '{pred_dir}' does not exist.", file=sys.stderr)
+        logger.error(f"pred-dir '{pred_dir}' does not exist.")
         sys.exit(1)
     if not labels_dir.exists():
-        print(f"ERROR: labels-dir '{labels_dir}' does not exist.", file=sys.stderr)
+        logger.error(f"labels-dir '{labels_dir}' does not exist.")
         sys.exit(1)
 
     label_files = sorted(labels_dir.glob("*.png"))
     if not label_files:
-        print(f"ERROR: no *.png files found in '{labels_dir}'.", file=sys.stderr)
+        logger.error(f"no *.png files found in '{labels_dir}'.")
         sys.exit(1)
 
-    print(f"Labels dir:  {labels_dir}  ({len(label_files)} files)")
-    print(f"Pred dir:    {pred_dir}")
-    print(f"RGB dir:     {rgb_dir}")
-    print(f"Save dir:    {save_dir}")
-    print(f"Min GT px:   {args.min_px}")
-    print()
+    logger.info(f"Labels dir:  {labels_dir}  ({len(label_files)} files)")
+    logger.info(f"Pred dir:    {pred_dir}")
+    logger.info(f"RGB dir:     {rgb_dir}")
+    logger.info(f"Save dir:    {save_dir}")
+    logger.info(f"Min GT px:   {args.min_px}")
 
     metrics = Metrics()
 
@@ -439,24 +441,22 @@ async def main() -> None:
             save_case(stem, fp_dir, gt_label, pred_mask, gt_rgb_path, pred_rgb_path)
 
         if (idx + 1) % 100 == 0 or (idx + 1) == len(label_files):
-            print(
+            logger.info(
                 f"  [{idx + 1:>5}/{len(label_files)}]  "
                 f"TP={metrics.tp}  FP={metrics.fp}  "
-                f"FN={metrics.fn}  TN={metrics.tn}",
-                flush=True,
+                f"FN={metrics.fn}  TN={metrics.tn}"
             )
 
-    print()
     report = metrics.report()
-    print(report)
+    logger.info(report)
 
     save_dir.mkdir(parents=True, exist_ok=True)
     report_path = save_dir / "metrics.txt"
     report_path.write_text(report, encoding="utf-8")
 
-    print(f"\nReport saved  →  {report_path}")
-    print(f"FN cases      →  {fn_dir}  ({metrics.fn} images)")
-    print(f"FP cases      →  {fp_dir}  ({metrics.fp} images)")
+    logger.info(f"Report saved  →  {report_path}")
+    logger.info(f"FN cases      →  {fn_dir}  ({metrics.fn} images)")
+    logger.info(f"FP cases      →  {fp_dir}  ({metrics.fp} images)")
 
 
 if __name__ == "__main__":

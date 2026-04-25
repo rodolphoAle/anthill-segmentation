@@ -79,27 +79,27 @@ model.eval()
 
 ## Evolução dos Hiperparâmetros por Run
 
-| Parâmetro                     | Run 01       | Run 02       | Run 03         | Run 04                | Run 05                    | Run 06                         | Run 07                                    | Run 08                                    | Run 09                                      |
-| ------------------------------ | ------------ | ------------ | -------------- | --------------------- | ------------------------- | ------------------------------ | ----------------------------------------- | ----------------------------------------- | ------------------------------------------- |
-| **Data**                 | 04-03        | 04-03→04    | 04-04→05      | 04-05→06             | 04-08→09                 | 04-09→10                      | 04-16 (interrompido)                     | 04-17→18                                 | 04-18 (interrompido)                       |
-| **Épocas executadas**   | ~73          | 100          | ~48            | 64                    | 100                       | 100                            | ~50 / 100                                | 100                                       | 51 / 100 (interrompido)                    |
-| **Função de loss**     | CrossEntropy | CrossEntropy | Focal (γ=2.0) | Tversky+Focal (50/50) | Tversky+CE (50/50)        | Tversky+CE (70/30)             | Tversky+CE (70/30)                        | Tversky+Focal (70/30)                     | Tversky+Focal (85/15)                       |
-| **class_weight_anthill** | 10.0         | 6.0          | 4.0            | 6.0                   | 4.0                       | 4.0                            | 4.0                                       | 4.0                                       | 4.0                                         |
-| **Tversky α / β**      | -           | -           | -             | 0.3 / 0.7             | 0.3 / 0.6                 | 0.3 / 0.8                      | 0.3 / 0.8                                 | 0.3 / 0.8                                 | 0.1 / 0.9                                   |
-| **focal_loss_gamma**     | 0.0          | 0.0          | 2.0            | 2.0                   | 0.0                       | 0.0                            | 0.0                                       | 2.0                                       | 2.0                                         |
-| **Scheduler**            | ReduceLR     | ReduceLR     | ReduceLR       | ReduceLR              | ReduceLR                  | ReduceLR                       | **CosineAnnealingLR**                    | **CosineAnnealingLR**                    | **CosineAnnealingLR**                       |
-| **BatchNorm**            | Não         | Não         | Não           | Não                  | **Sim**             | **Sim**                  | **Sim**                                 | **Sim**                                 | **Sim**                                     |
-| **Upsampling decoder**   | Bilinear     | Bilinear     | Bilinear       | Bilinear              | **ConvTranspose2d** | **ConvTranspose2d**      | **ConvTranspose2d**                     | **ConvTranspose2d**                     | **ConvTranspose2d**                         |
-| **Oversampling**         | -           | -           | -             | -                    | -                        | **3:1 WeightedRandomSampler** | **3:1 WeightedRandomSampler**            | **Removido** (shuffle=True)              | **Removido** (shuffle=True)                |
-| **Copy-Paste Aug**       | -           | -           | -             | -                    | -                        | -                             | -                                        | **Sim** (p=0.5, padding=5px)              | **Sim** (p=0.1, padding=5px)               |
-| **Augmentações Extras** | -           | -           | -             | -                    | -                        | -                             | -                                        | **RandomRotate90 + ElasticTransform**     | **ElasticTransform (a=25, s=4), no Rotate90** |
-| **confidence_threshold** | -           | -           | 0.7            | 0.6                   | 0.6                       | 0.5                            | 0.5                                       | **0.4** (testado pós-treino)             | 0.5                                         |
-| **min_region_px**        | -           | -           | 200            | 100                   | 100                       | 100                            | 100                                       | 100                                       | 100                                         |
-| **max_region_px**        | -           | -           | 5.000          | 5.000                 | 5.000                     | 5.000                          | 5.000                                     | 5.000                                     | 5.000                                       |
-| **num_workers**          | 4            | 4            | 4              | 4                     | 5                         | 5                              | 5                                         | 5                                         | 5                                           |
-| **Augmentações base**  | Off          | On           | On             | On                    | On                        | On                             | On                                        | On                                        | On                                          |
-| **Melhor val_loss**      | 0.0756       | 0.1227       | 0.0571         | 0.4592¹              | 0.2045¹                  | 0.2770¹                       | **0.4441¹** ← fracasso     | 0.2708¹                                  | 0.2314¹                                    |
-| **Época do best**       | ~33          | 26           | 42             | 28                    | 87                        | 36                             | 33                                        | 59                                        | 30                                          |
+| Parâmetro                     | Run 01       | Run 02       | Run 03         | Run 04                | Run 05                    | Run 06                         | Run 07                                    | Run 08                                    | Run 09                                         | Run 10                                         |
+| ------------------------------ | ------------ | ------------ | -------------- | --------------------- | ------------------------- | ------------------------------ | ----------------------------------------- | ----------------------------------------- | ---------------------------------------------- | ---------------------------------------------- |
+| **Data**                 | 04-03        | 04-03→04    | 04-04→05      | 04-05→06             | 04-08→09                 | 04-09→10                      | 04-16 (interrompido)                     | 04-17→18                                 | 04-18 (interrompido)                          | 04-24→04-25                                   |
+| **Épocas executadas**   | ~73          | 100          | ~48            | 64                    | 100                       | 100                            | ~50 / 100                                | 100                                       | 51 / 100 (interrompido)                       | **100**                                        |
+| **Função de loss**     | CrossEntropy | CrossEntropy | Focal (γ=2.0) | Tversky+Focal (50/50) | Tversky+CE (50/50)        | Tversky+CE (70/30)             | Tversky+CE (70/30)                        | Tversky+Focal (70/30)                     | Tversky+Focal (85/15)                          | Tversky+Focal (85/15)                          |
+| **class_weight_anthill** | 10.0         | 6.0          | 4.0            | 6.0                   | 4.0                       | 4.0                            | 4.0                                       | 4.0                                       | 4.0                                            | 4.0                                            |
+| **Tversky α / β**      | -           | -           | -             | 0.3 / 0.7             | 0.3 / 0.6                 | 0.3 / 0.8                      | 0.3 / 0.8                                 | 0.3 / 0.8                                 | 0.1 / 0.9                                      | 0.1 / 0.9                                      |
+| **focal_loss_gamma**     | 0.0          | 0.0          | 2.0            | 2.0                   | 0.0                       | 0.0                            | 0.0                                       | 2.0                                       | 2.0                                            | 2.0                                            |
+| **Scheduler**            | ReduceLR     | ReduceLR     | ReduceLR       | ReduceLR              | ReduceLR                  | ReduceLR                       | **CosineAnnealingLR**                    | **CosineAnnealingLR**                    | **CosineAnnealingLR**                          | **CosineAnnealingLR**                          |
+| **BatchNorm**            | Não         | Não         | Não           | Não                  | **Sim**             | **Sim**                  | **Sim**                                 | **Sim**                                 | **Sim**                                        | **Sim**                                        |
+| **Upsampling decoder**   | Bilinear     | Bilinear     | Bilinear       | Bilinear              | **ConvTranspose2d** | **ConvTranspose2d**      | **ConvTranspose2d**                     | **ConvTranspose2d**                     | **ConvTranspose2d**                            | **ConvTranspose2d**                            |
+| **Oversampling**         | -           | -           | -             | -                    | -                        | **3:1 WeightedRandomSampler** | **3:1 WeightedRandomSampler**            | **Removido** (shuffle=True)              | **Removido** (shuffle=True)                   | **Removido** (shuffle=True)                   |
+| **Copy-Paste Aug**       | -           | -           | -             | -                    | -                        | -                             | -                                        | **Sim** (p=0.5, padding=5px)              | **Sim** (p=0.1, padding=5px)                  | **Sim** (p=0.1, padding=5px)                  |
+| **Augmentações Extras** | -           | -           | -             | -                    | -                        | -                             | -                                        | **RandomRotate90 + ElasticTransform**     | **ElasticTransform (a=25, s=4), no Rotate90** | **ElasticTransform (a=25, s=4), no Rotate90** |
+| **confidence_threshold** | -           | -           | 0.7            | 0.6                   | 0.6                       | 0.5                            | 0.5                                       | **0.4** (testado pós-treino)             | 0.5                                            | 0.5                                            |
+| **min_region_px**        | -           | -           | 200            | 100                   | 100                       | 100                            | 100                                       | 100                                       | 100                                            | 100                                            |
+| **max_region_px**        | -           | -           | 5.000          | 5.000                 | 5.000                     | 5.000                          | 5.000                                     | 5.000                                     | 5.000                                          | 5.000                                          |
+| **num_workers**          | 4            | 4            | 4              | 4                     | 5                         | 5                              | 5                                         | 5                                         | 5                                              | 5                                              |
+| **Augmentações base**  | Off          | On           | On             | On                    | On                        | On                             | On                                        | On                                        | On                                             | On                                             |
+| **Melhor val_loss**      | 0.0756       | 0.1227       | 0.0571         | 0.4592¹              | 0.2045¹                  | 0.2770¹                       | **0.4441¹** ← fracasso     | 0.2708¹                                  | 0.2314¹                                        | **0.2002¹**                                    |
+| **Época do best**       | ~33          | 26           | 42             | 28                    | 87                        | 36                             | 33                                        | 59                                        | 30                                             | **93**                                         |
 
 > ¹ Escala Tversky+CE diferente - não comparável com Runs 01–03.
 
@@ -505,6 +505,81 @@ $$
 
 ---
 
+### Run 10 - Run 09 completo (100 épocas)
+
+**Objetivo:** completar o treinamento do Run 09 que foi interrompido na época 52, verificando se o modelo continua melhorando em épocas mais tardias com CosineAnnealingLR.
+
+**Mudanças em relação ao Run 09:** nenhuma — configuração idêntica. O Run 10 é uma nova execução do zero com os mesmos hiperparâmetros.
+
+**Curva de loss** *(100 épocas completas):*
+
+| Época       | train_loss       | val_loss                  | LR                       |
+| ------------ | ---------------- | ------------------------- | ------------------------ |
+| 1            | 0.5691           | 0.6534                    | 1.00e-3                  |
+| 6            | 0.4162           | 0.2407                    | 9.91e-4                  |
+| 17           | 0.3340           | 0.2135                    | 9.30e-4                  |
+| 31           | 0.2861           | 0.2231                    | 7.81e-4                  |
+| 50           | 0.2479           | 0.3767                    | 5.01e-4                  |
+| 65           | 0.2225           | 0.2040                    | 2.74e-4                  |
+| **93** | **0.1909** | **0.2002** ← best   | 1.30e-5                  |
+| 97           | 0.1992           | 0.2051                    | 3.22e-6                  |
+| 100          | 0.1933           | 0.2540                    | 1.00e-6 ← fim do cosine |
+
+**Análise da curva:**
+
+- **Best checkpoint na época 93**: val_loss=0.2002 — completar as 100 épocas permitiu encontrar um checkpoint 13.5% melhor que o Run 09 (0.2314 na ep.30)
+- **val_loss extremamente volátil**: oscilou entre 0.2002 e 0.5246 ao longo do treino — padrão consistente com Runs 08-09, causado pelas augmentações (copy-paste + ElasticTransform) que geram batches de validação com distribuição instável
+- **Sem melhora após época 93**: val_loss subiu de 0.2002 → 0.2540 nas últimas 7 épocas enquanto train_loss continuou caindo (0.1909 → 0.1933), indicando leve overfitting no final do ciclo cosine
+
+**Resultados de validação (validation_service):**
+
+| Métrica          | Valor  |
+| ---------------- | ------ |
+| Pixel Accuracy   | 0.6601 |
+| mIoU             | 0.4398 |
+| Mean Dice        | 0.4817 |
+
+**Resultados de validação (evaluate_detections):**
+
+| Métrica (evaluate_detections) | Valor     |
+| ----------------------------- | --------- |
+| TP                            | 505       |
+| FP                            | 105       |
+| FN                            | 88        |
+| TN                            | 1.768     |
+| **Precision**                 | **82.8%** |
+| **Recall**                    | **85.2%** |
+| **F1 Score**                  | **84.0%** |
+| Pixel Accuracy                | 98.8%     |
+| IoU anthill                   | 30.3%     |
+| Dice anthill                  | 46.5%     |
+| Mean IoU                      | 64.5%     |
+| Mean Dice                     | 72.9%     |
+
+**Configuração de validação:** threshold=0.5, min_region_px=100, pred_dir=output/validation_run10, save_dir=output/evaluation_run10
+
+**Comparação com baselines:**
+
+| Métrica       | Run 05 (t=0.6) | Run 09 (t=0.5) | Run 10 (t=0.5) | Δ vs Run 05 | Δ vs Run 09  |
+| ------------- | -------------- | -------------- | -------------- | ----------- | ------------ |
+| **Precision** | **85.1%**      | 75.1%          | 82.8%          | -2.3pp      | **+7.7pp**   |
+| **Recall**    | 83.5%          | **87.0%**      | **85.2%**      | **+1.7pp**  | -1.8pp       |
+| **F1**        | **84.3%**      | 80.6%          | 84.0%          | -0.3pp      | **+3.4pp**   |
+| FN (perdidos) | 98             | 77             | 88             | -10         | +11          |
+| FP (alarmes)  | 87             | 171            | **105**        | -18         | **-66**      |
+| IoU anthill   | **35.2%**      | 29.1%          | 30.3%          | -4.9pp      | +1.2pp       |
+| Dice anthill  | **52.1%**      | 45.0%          | 46.5%          | -5.6pp      | +1.5pp       |
+
+**Diagnóstico:**
+
+- **Completar 100 épocas melhorou F1 +3.4 pp vs Run 09** (84.0% vs 80.6%) — a lição principal é que com CosineAnnealingLR o best checkpoint pode aparecer muito tarde (ep.93/100)
+- **Precision +7.7 pp vs Run 09** (82.8% vs 75.1%) — FP caiu de 171 → 105 (-38%); as épocas adicionais calibraram melhor a fronteira de decisão
+- **F1 quase idêntico ao Run 05** (84.0% vs 84.3%, -0.3 pp): Run 10 tem melhor Recall (+1.7 pp) mas pior Precision (-2.3 pp) e pior IoU anthill (-4.9 pp)
+- **IoU anthill = 30.3% vs 35.2% (Run 05)**: segmentação pixel-a-pixel piorou com as augmentações mais agressivas — o modelo detecta mais imagens corretas (Recall), mas segmenta menos precisamente dentro de cada imagem
+- **val_loss mais baixo de todos os Runs Tversky+Focal** (0.2002 vs 0.2314 do Run 09 e 0.2708 do Run 08)
+
+---
+
 ## Resultados Consolidados
 
 ### Métricas de segmentação (validation_service - média por imagem)
@@ -517,6 +592,7 @@ $$
 | Run 03           | t=0.7 · min=200px · max=5000px     | 0.6601           | 0.4347           | 0.4754           |
 | **Run 05** | **t=0.6 · min=100px · max=5000px** | **0.6605** | **0.4401** | **0.4819** |
 | Run 06     | t=0.5 · min=100px · max=5000px     | 0.6607           | 0.4400           | 0.4818           |
+| Run 10     | t=0.5 · min=100px · max=5000px     | 0.6601           | 0.4398           | 0.4817           |
 
 ### Métricas de detecção por imagem (evaluate_detections - acumulado global)
 
@@ -531,6 +607,7 @@ Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 | Run 06 · t=0.5 · min=100px     | 481     | 79     | 112    | 1.794     | 85.9%     | 81.1%     | 83.4%     |
 | Run 08 · t=0.4 · min=100px     | 406           | 44           | 187          | 1.829           | 90.2%           | 68.5%           | 77.9%           |
 | Run 09 · t=0.5 · min=100px     | 516           | 171          | 77           | 1.702           | 75.1%           | 87.0%           | 80.6%           |
+| **Run 10 · t=0.5 · min=100px** | **505** | **105** | **88** | **1.768** | **82.8%** | **85.2%** | **84.0%** |
 
 ### Métricas de segmentação por pixel (evaluate_detections - acumulado global)
 
@@ -543,6 +620,7 @@ Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 | Run 06 · t=0.5 · min=100px     | 98.9%     | 98.9%     | 34.3%     | 51.1%      | 66.6%     | 75.3%     |
 | Run 08 · t=0.4 · min=100px     | 98.9%           | 98.9%           | 34.2%           | 51.0%            | 66.6%           | 75.2%           |
 | Run 09 · t=0.5 · min=100px     | 98.7%           | 98.7%           | 29.1%           | 45.0%            | 63.9%           | 72.2%           |
+| Run 10 · t=0.5 · min=100px     | 98.8%           | 98.8%           | 30.3%           | 46.5%            | 64.5%           | 72.9%           |
 
 > **Nota sobre diferença de mIoU:** `validation_service` reporta média de IoU *por imagem depois agrega* (~0.44 Run 05), enquanto `evaluate_detections` acumula pixels *globalmente* (~0.67 Run 05). O segundo é mais rigoroso para datasets desbalanceados.
 
@@ -563,6 +641,7 @@ Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 | Dataset limitado (593 GT positivas) + IoU anthill=34% | 112 FN (formigueiros perdidos); segmentação pixel-a-pixel imprecisa | Aumentar variabilidade real: augmentations diferenciais para positivos ou pseudo-labeling | Run 06/07|
 | Copy-paste + augmentações agressivas criam padrões irrealistas | Recall despencou -15pp vs Run 05 (68.5% vs 83.5%); 187 FN vs 98; threshold=0.4 não recuperou Recall; modelo excessivamente conservador | **Falhou**: ElasticTransform alpha=50 muito agressivo; copy-paste com bordas nítidas ensina "artefatos de colagem"; RandomRotate90 pode criar orientações inexistentes na validação; reduzir alpha → 20-30, adicionar gaussian blur nas bordas do copy-paste, ou **coletar dados reais** | Run 08   |
 | Tversky beta=0.9 + aug mais realistas estabilizou val_loss cedo | Best val_loss=0.2314 na epoca 30; avaliacao: Precision 75.1%, Recall 87.0%, F1 80.6 | Meta de Recall 99% nao atingida; testar threshold menor e rever pos-processamento | Run 09   |
+| Run 09 interrompido na ep.52; best checkpoint pode aparecer muito tarde com CosineAnnealingLR | Run 10 (mesmos params, 100 épocas) encontrou best na ep.93 — 13.5% melhor val_loss (0.2002 vs 0.2314); F1=84.0% quase igual ao Run 05 (84.3%) | IoU anthill ainda 4.9 pp abaixo do Run 05 (30.3% vs 35.2%) — segmentação pixel-a-pixel regrediu com augmentações agressivas | Run 10   |
 
 ---
 
@@ -579,6 +658,7 @@ Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 - [X] Run 07 - CosineAnnealingLR para corrigir scheduler do Run 06 — **FRACASSO: val_loss=0.4441 (+60% vs Run 06); WeightedRandomSampler descartado**
 - [X] Run 08 - Copy-Paste Augmentation + RandomRotate90 + ElasticTransform — **FRACASSO: Recall=68.5% (-15pp vs Run 05); FN=187 (+91% vs Run 05); augmentações irrealistas pioraram generalização**
 - [X] Run 09 - Tversky β=0.9 + aug mais realistas — **interrompido na epoca 52; best val_loss=0.2314 (ep.30); Precision=75.1% / Recall=87.0% / F1=80.6%**
+- [X] Run 10 - Run 09 completo (100 épocas) — **best val_loss=0.2002 (ep.93); Precision=82.8% / Recall=85.2% / F1=84.0%; IoU anthill=30.3%**
 
 ---
 

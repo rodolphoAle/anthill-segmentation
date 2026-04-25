@@ -258,7 +258,7 @@ class TrainingService:
         # corrupting model weights after just a few updates.  Pure FP32 is safe.
         use_amp = False
         total_batches = len(train_loader)
-        log_every = 250  # log every 250 batches regardless of dataset size
+        log_every = 500  # log every 500 batches regardless of dataset size
 
         for epoch in range(num_epochs):
             self._state.current_epoch = epoch + 1

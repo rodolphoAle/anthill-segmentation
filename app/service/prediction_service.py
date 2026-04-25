@@ -9,7 +9,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms.v2 as transforms
-from loguru import logger
+from loguru import logger # pyright: ignore[reportMissingImports]
 from PIL import Image
 
 
