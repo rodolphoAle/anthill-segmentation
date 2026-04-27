@@ -40,10 +40,10 @@ Validações concluídas com sucesso
 
 ## Execução do Treinamento
 
-Opção 1 — Automatizada (recomendada)
+Opção 1  Automatizada (recomendada)
 ```bash quick_start.sh```
 
-Opção 2 — Manual
+Opção 2  Manual
 ```python train_with_monitoring.py \
   --epochs 5 \
   --lr 1e-4 \
