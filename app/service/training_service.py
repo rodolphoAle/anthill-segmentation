@@ -28,7 +28,7 @@ class FocalLoss(nn.Module):
     """Weighted Focal Loss for semantic segmentation.
 
     Focal Loss down-weights easy examples (confidently correct predictions)
-    so training focuses on hard, ambiguous cases — exactly what we need
+    so training focuses on hard, ambiguous cases  exactly what we need
     when reddish soil confuses the model.
 
     FL(p_t) = -alpha_t * (1 - p_t)^gamma * log(p_t)
@@ -68,7 +68,7 @@ class FocalLoss(nn.Module):
 #  Tversky Loss 
 
 class TverskyLoss(nn.Module):
-    """Tversky Loss — penalises FN more than FP when beta > alpha.
+    """Tversky Loss  penalises FN more than FP when beta > alpha.
 
     TL = 1 - TP / (TP + alpha*FP + beta*FN)
 
@@ -97,13 +97,13 @@ class TverskyLoss(nn.Module):
         self.ignore_index = ignore_index
 
     def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        # inputs: (N, C, H, W) logits — C=2 (background, anthill)
+        # inputs: (N, C, H, W) logits  C=2 (background, anthill)
         probs = F.softmax(inputs, dim=1)          # (N, 2, H, W)
         anthill_prob = probs[:, 1, :, :]          # (N, H, W)
 
         # Build binary target and valid mask
         valid_mask = targets != self.ignore_index  # (N, H, W)
-        target_bin = (targets == 1).float()        # (N, H, W) — 1=anthill
+        target_bin = (targets == 1).float()        # (N, H, W)  1=anthill
 
         anthill_prob = anthill_prob[valid_mask]
         target_bin   = target_bin[valid_mask]
@@ -118,10 +118,69 @@ class TverskyLoss(nn.Module):
         return 1.0 - tversky_index
 
 
-#  Combined Tversky + Focal Loss 
+#  Lovász Hinge Loss
+
+class LovaszHingeLoss(nn.Module):
+    """Binary Lovász Hinge Loss  direct surrogate for IoU (Jaccard index).
+
+    Standard segmentation losses (CE, Focal, Tversky) optimise per-pixel
+    classification and only improve IoU as a side-effect.  When the positive
+    class is rare (<1% of pixels), aggressive Recall-targeted losses such as
+    Tversky with high beta drive Recall up but degrade IoU because FN reduction
+    sacrifices boundary precision.
+
+    Lovász Hinge is a *piecewise-linear convex surrogate* of the Jaccard loss
+    on the simplex of foreground errors (Berman et al., CVPR 2018).  Adding it
+    to the combined loss is the standard recipe to recover IoU after pushing
+    Recall via Tversky.
+
+    For 2-class segmentation (background, anthill) the logit input is converted
+    to a single-channel margin: ``logit_anthill - logit_background``.
+
+    Args:
+        ignore_index: Label value excluded from the loss (e.g. 255).
+    """
+
+    def __init__(self, ignore_index: int = 255) -> None:
+        super().__init__()
+        self.ignore_index = ignore_index
+
+    @staticmethod
+    def _lovasz_grad(gt_sorted: torch.Tensor) -> torch.Tensor:
+        """Gradient of the Lovász extension w.r.t. sorted errors."""
+        p = gt_sorted.numel()
+        gts = gt_sorted.sum()
+        intersection = gts - gt_sorted.cumsum(0)
+        union = gts + (1.0 - gt_sorted).cumsum(0)
+        jaccard = 1.0 - intersection / union
+        if p > 1:
+            jaccard[1:p] = jaccard[1:p].clone() - jaccard[0:-1].clone()
+        return jaccard
+
+    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+        # inputs: (N, 2, H, W) class logits  class 1 = anthill
+        # Convert to single-channel margin: positive → anthill prediction
+        margin = inputs[:, 1] - inputs[:, 0]              # (N, H, W)
+
+        valid = targets != self.ignore_index
+        margin_v = margin[valid]
+        target_v = (targets[valid] == 1).float()
+
+        if margin_v.numel() == 0:
+            return inputs.sum() * 0.0
+
+        signs = 2.0 * target_v - 1.0                       # ±1
+        errors = 1.0 - margin_v * signs
+        errors_sorted, perm = torch.sort(errors, descending=True)
+        gt_sorted = target_v[perm]
+        grad = self._lovasz_grad(gt_sorted)
+        return torch.dot(F.relu(errors_sorted), grad)
+
+
+#  Combined Tversky + Focal (+ optional Lovász) Loss
 
 class CombinedTverskyFocalLoss(nn.Module):
-    """Combines Tversky Loss and Focal Loss to prevent mode collapse.
+    """Combines Tversky, Focal, and (optionally) Lovász losses.
 
     Pure Tversky/Dice losses collapse to "predict all background" during
     early training when the class imbalance is extreme: the alpha*FP term
@@ -129,21 +188,28 @@ class CombinedTverskyFocalLoss(nn.Module):
     val_loss freezes at a constant value while LR decays to zero.
 
     This class anchors training with Focal Loss (per-pixel cross-entropy
-    gradients + class weights) and adds the Tversky term to push Recall:
+    gradients + class weights) and adds the Tversky term to push Recall.
+    When ``lovasz_weight > 0``, a Lovász Hinge term is added to directly
+    optimise IoU and recover boundary precision lost to Tversky:
 
         total = tversky_weight * TverskyLoss
-              + (1 - tversky_weight) * FocalLoss
+              + lovasz_weight  * LovaszHingeLoss
+              + focal_weight   * FocalLoss
 
-    The Focal component prevents collapse; the Tversky component ensures
-    FN are penalised more than FP once the model is stable.
+    where ``focal_weight = 1 - tversky_weight - lovasz_weight``.
+
+    The Focal component prevents collapse; Tversky ensures FN penalisation;
+    Lovász (when active) keeps the segmentation tight to true boundaries.
 
     Args:
         tversky_alpha:  FP weight in Tversky denominator (lower → FP-tolerant).
         tversky_beta:   FN weight in Tversky denominator (higher → Recall push).
         tversky_weight: Fraction of the total loss assigned to Tversky [0, 1].
+        lovasz_weight:  Fraction of the total loss assigned to Lovász [0, 1].
+                        0.0 disables Lovász (Run 10 and earlier behaviour).
         focal_gamma:    Focusing exponent for the Focal component.
         class_weights:  Per-class weights tensor for the Focal component.
-        ignore_index:   Label value excluded from both components (e.g. 255).
+        ignore_index:   Label value excluded from all components (e.g. 255).
     """
 
     def __init__(
@@ -151,11 +217,17 @@ class CombinedTverskyFocalLoss(nn.Module):
         tversky_alpha: float = 0.3,
         tversky_beta: float = 0.7,
         tversky_weight: float = 0.5,
+        lovasz_weight: float = 0.0,
         focal_gamma: float = 2.0,
         class_weights: torch.Tensor | None = None,
         ignore_index: int = 255,
     ) -> None:
         super().__init__()
+        if tversky_weight + lovasz_weight > 1.0:
+            raise ValueError(
+                f"tversky_weight ({tversky_weight}) + lovasz_weight ({lovasz_weight}) "
+                f"must be <= 1.0 (focal weight = remainder)"
+            )
         self._tversky = TverskyLoss(
             alpha=tversky_alpha,
             beta=tversky_beta,
@@ -166,14 +238,19 @@ class CombinedTverskyFocalLoss(nn.Module):
             weight=class_weights,
             ignore_index=ignore_index,
         )
+        self._lovasz = LovaszHingeLoss(ignore_index=ignore_index) if lovasz_weight > 0 else None
         self._tversky_weight = tversky_weight
-        self._focal_weight = 1.0 - tversky_weight
+        self._lovasz_weight = lovasz_weight
+        self._focal_weight = 1.0 - tversky_weight - lovasz_weight
 
     def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
-        return (
+        total = (
             self._tversky_weight * self._tversky(inputs, targets)
             + self._focal_weight * self._focal(inputs, targets)
         )
+        if self._lovasz is not None:
+            total = total + self._lovasz_weight * self._lovasz(inputs, targets)
+        return total
 
 class TrainingStatus(str, Enum):
     """Finite-state representation of a training job."""
@@ -278,7 +355,7 @@ class TrainingService:
                 # Skip batches with corrupted data (e.g. failed SSL download)
                 if torch.isnan(inputs).any() or torch.isinf(inputs).any():
                     logger.warning(
-                        "Epoch {}/{} batch {} — skipping: NaN/Inf in inputs ({})",
+                        "Epoch {}/{} batch {}  skipping: NaN/Inf in inputs ({})",
                         epoch + 1, num_epochs, batch_idx + 1, names[0],
                     )
                     last_log_time = time.monotonic()
@@ -288,7 +365,7 @@ class TrainingService:
                 # after random rotation crops out all valid-label regions).
                 if (labels == 255).all():
                     logger.warning(
-                        "Epoch {}/{} batch {} — skipping: all pixels are ignore_index ({})",
+                        "Epoch {}/{} batch {}  skipping: all pixels are ignore_index ({})",
                         epoch + 1, num_epochs, batch_idx + 1, names[0],
                     )
                     last_log_time = time.monotonic()
@@ -300,7 +377,7 @@ class TrainingService:
 
                 if torch.isnan(outputs).any() or torch.isinf(outputs).any():
                     logger.warning(
-                        "Epoch {}/{} batch {} — skipping: NaN/Inf in model outputs ({})",
+                        "Epoch {}/{} batch {}  skipping: NaN/Inf in model outputs ({})",
                         epoch + 1, num_epochs, batch_idx + 1, names[0],
                     )
                     optimizer.zero_grad()
@@ -311,7 +388,7 @@ class TrainingService:
 
                 if torch.isnan(loss) or torch.isinf(loss):
                     logger.warning(
-                        "Epoch {}/{} batch {} — skipping: NaN/Inf loss ({})",
+                        "Epoch {}/{} batch {}  skipping: NaN/Inf loss ({})",
                         epoch + 1, num_epochs, batch_idx + 1, names[0],
                     )
                     optimizer.zero_grad()
@@ -367,7 +444,7 @@ class TrainingService:
 
             current_lr = optimizer.param_groups[0]["lr"]
             logger.info(
-                "Epoch {}/{} — loss: {:.4f} | val_loss: {:.4f} | lr: {:.2e}",
+                "Epoch {}/{}  loss: {:.4f} | val_loss: {:.4f} | lr: {:.2e}",
                 epoch + 1,
                 num_epochs,
                 avg_loss,
@@ -383,7 +460,7 @@ class TrainingService:
                     settings.best_model_params_path,
                 )
                 logger.info(
-                    "New best val_loss={:.4f} — checkpoint saved to '{}'",
+                    "New best val_loss={:.4f}  checkpoint saved to '{}'",
                     best_val_loss,
                     settings.best_model_params_path,
                 )
@@ -411,7 +488,7 @@ class TrainingService:
                 total_loss += loss.item()
                 batch_count += 1
         if batch_count == 0:
-            logger.warning("Validation loop: all batches produced NaN/Inf loss — val_loss reported as inf")
+            logger.warning("Validation loop: all batches produced NaN/Inf loss  val_loss reported as inf")
             return float("inf")
         return total_loss / batch_count
 
@@ -457,14 +534,19 @@ class TrainingService:
                 tversky_alpha=settings.tversky_alpha,
                 tversky_beta=settings.tversky_beta,
                 tversky_weight=settings.tversky_loss_weight,
+                lovasz_weight=settings.lovasz_loss_weight,
                 focal_gamma=settings.focal_loss_gamma if settings.focal_loss_gamma > 0 else 2.0,
                 class_weights=class_weights,
                 ignore_index=255,
             )
+            focal_weight = 1.0 - settings.tversky_loss_weight - settings.lovasz_loss_weight
             logger.info(
-                "Using Combined Tversky+Focal Loss "
-                "(tversky_weight={}, alpha={}, beta={}, focal_gamma={}, class_weights=[{}, {}])",
+                "Using Combined Loss "
+                "(tversky_weight={}, lovasz_weight={}, focal_weight={:.3f}, "
+                "alpha={}, beta={}, focal_gamma={}, class_weights=[{}, {}])",
                 settings.tversky_loss_weight,
+                settings.lovasz_loss_weight,
+                focal_weight,
                 settings.tversky_alpha,
                 settings.tversky_beta,
                 settings.focal_loss_gamma if settings.focal_loss_gamma > 0 else 2.0,
@@ -516,7 +598,7 @@ class TrainingService:
         try:
             self._state.status = TrainingStatus.TRAINING
             logger.info(
-                "Training started — {} epochs on {}",
+                "Training started  {} epochs on {}",
                 epochs,
                 self._device,
             )

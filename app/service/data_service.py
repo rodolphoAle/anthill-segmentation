@@ -277,6 +277,10 @@ class DataService:
             preload=settings.preload_dataset,
             copy_paste=settings.aug_copy_paste,
             copy_paste_prob=settings.aug_copy_paste_prob,
+            max_ignore_pixel_pct=settings.max_ignore_pixel_pct,
+            anthill_duplicate=settings.aug_anthill_duplicate,
+            anthill_duplicate_prob=settings.aug_anthill_duplicate_prob,
+            anthill_duplicate_max_copies=settings.aug_anthill_duplicate_max_copies,
         )
         val_dataset = SegmentationDataset(
             rgb_dir=val_rgb_dir,

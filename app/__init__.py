@@ -1,1 +1,1 @@
-"""UNet Segmentation API — async FastAPI application."""
+"""UNet Segmentation API  async FastAPI application."""

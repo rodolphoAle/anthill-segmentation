@@ -7,7 +7,7 @@ Usage (inside the container)::
     python run_validation.py --threshold 5.0 --data-mode local
 
 All flags are optional and override the corresponding UNET_* env-var / .env
-value for this run only — no container restart required.
+value for this run only  no container restart required.
 """
 
 import argparse
@@ -46,7 +46,7 @@ def _apply_cli_overrides() -> None:
         "--no-region-filter",
         dest="region_filter",
         action="store_false",
-        help="Disable connected-component size filter — raw confidence output (UNET_USE_REGION_FILTER=false)",
+        help="Disable connected-component size filter  raw confidence output (UNET_USE_REGION_FILTER=false)",
     )
     args = parser.parse_args()
 

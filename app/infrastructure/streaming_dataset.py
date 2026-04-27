@@ -1,4 +1,4 @@
-"""In-memory streaming dataset for segmentation — zero local disk writes.
+"""In-memory streaming dataset for segmentation  zero local disk writes.
 
 Images and masks are downloaded on-demand via a synchronous callable
 (e.g. ``GoogleDriveClient._sync_download_file``) and immediately
@@ -40,7 +40,7 @@ class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor, str
         When using ``DataLoader(num_workers > 0)`` each worker process
         receives a pickled copy of this dataset.  The ``download_fn``
         (typically a bound method on ``GoogleDriveClient``) is also
-        pickled — the Drive service inside the client is lazily
+        pickled  the Drive service inside the client is lazily
         re-authenticated in every worker the first time it is needed.
         If pickling causes issues, set ``num_workers=0``.
     """
@@ -81,7 +81,7 @@ class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor, str
         if self._augmentations:
             image, mask = self._augmentations(image, mask)
 
-        # Normalise image to float32 with ImageNet stats — mask is NOT touched
+        # Normalise image to float32 with ImageNet stats  mask is NOT touched
         image_tensor: torch.Tensor = self._normalize(image)
 
         mask_arr = np.array(mask)  # (H, W, 3)

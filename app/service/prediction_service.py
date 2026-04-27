@@ -56,7 +56,7 @@ class PredictionService:
         result: np.ndarray = await asyncio.to_thread(
             self._sync_predict, image_bytes,
         )
-        logger.info("Prediction complete — mask shape {}", result.shape)
+        logger.info("Prediction complete  mask shape {}", result.shape)
         return result
 
     async def predict_to_png(self, image_bytes: bytes) -> bytes:

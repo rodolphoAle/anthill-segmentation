@@ -15,11 +15,11 @@ Where each group is consumed
 ----------------------------
 * General / Google Drive / Model / Data / Pipeline
       → app/main.py, app/service/data_service.py
-* Training — basic
+* Training  basic
       → app/service/training_service.py  (start_training, _train_loop)
-* Training — loss & optimisation
+* Training  loss & optimisation
       → app/service/training_service.py  (start_training)
-* Training — augmentations
+* Training  augmentations
       → app/service/data_service.py      (create_train_transforms)
 """
 
@@ -51,7 +51,7 @@ class Settings(BaseSettings):
     # Number of output segmentation classes (2 = background + anthill).
     n_classes: int = 2
 
-    # ── Training — basic ──────────────────────────────────────────────────────
+    # ── Training  basic ──────────────────────────────────────────────────────
 
     # batch_size: how many image-mask pairs are processed together in one
     # gradient update.
@@ -85,7 +85,7 @@ class Settings(BaseSettings):
     #   Applied in: TrainingService._resolve_device() inside training_service.py
     device: str = "cuda"
 
-    # ── Training — loss & optimisation ────────────────────────────────────────
+    # ── Training  loss & optimisation ────────────────────────────────────────
 
     # class_weight_background: CrossEntropyLoss weight for the background class.
     # Usually kept at 1.0 as the reference weight.
@@ -116,11 +116,11 @@ class Settings(BaseSettings):
     #   alpha=0.3, beta=0.7 → FN penalised 2.3× more than FP; pushes Recall up
     #   alpha=0.0, beta=0.0 → disables Tversky Loss (falls back to Focal or CE)
     # NOTE: Tversky Loss works on soft probabilities and does not use
-    #       class_weight_anthill — the beta parameter replaces that role.
+    #       class_weight_anthill  the beta parameter replaces that role.
     #   Applied in: training_service.py when both alpha and beta > 0 (takes
     #               priority over focal_loss_gamma)
-    tversky_alpha: float = 0.1   # UNET_TVERSKY_ALPHA
-    tversky_beta: float = 0.9    # UNET_TVERSKY_BETA
+    tversky_alpha: float = 0.3   # UNET_TVERSKY_ALPHA
+    tversky_beta: float = 0.7    # UNET_TVERSKY_BETA
 
     # tversky_loss_weight: fraction of the combined loss assigned to Tversky.
     # The remaining (1 - tversky_loss_weight) goes to Focal Loss.
@@ -128,9 +128,21 @@ class Settings(BaseSettings):
     # while Tversky pushes for higher Recall once the model is stable.
     #   0.5 → equal weighting (recommended starting point)
     #   0.7 → stronger Recall push (use if Recall is still insufficient after run)
-    #   0.0 → disables Tversky (pure Focal Loss — same as focal_loss_gamma > 0 path)
+    #   0.0 → disables Tversky (pure Focal Loss  same as focal_loss_gamma > 0 path)
     #   Applied in: CombinedTverskyFocalLoss when tversky_alpha > 0 and beta > 0
-    tversky_loss_weight: float = 0.85   # UNET_TVERSKY_LOSS_WEIGHT
+    tversky_loss_weight: float = 0.5   # UNET_TVERSKY_LOSS_WEIGHT
+
+    # lovasz_loss_weight: fraction of the combined loss assigned to Lovász Hinge.
+    # Lovász directly optimises IoU (Jaccard index) via a surrogate that is
+    # convex on the simplex  unlike Tversky/Focal which optimise pixel
+    # classification with an IoU side-effect.  Adding Lovász is the standard
+    # technique to recover IoU when Tversky pushes Recall too aggressively.
+    #   0.0  → disabled (only Tversky+Focal active, original Run 10 behaviour)
+    #   0.3  → balanced triple loss: 0.5·Tversky + (1-0.5-0.3)·Focal + 0.3·Lovász
+    #   0.5+ → IoU-dominant; risk of mode collapse early in training
+    # NOTE: When > 0, the focal weight becomes (1 - tversky_loss_weight - lovasz_loss_weight).
+    #   Applied in: training_service.py CombinedTverskyFocalLoss when > 0
+    lovasz_loss_weight: float = 0.3   # UNET_LOVASZ_LOSS_WEIGHT
 
     # grad_clip_max_norm: maximum L2 norm allowed for the full gradient vector.
     # Prevents exploding gradients (critical for UNets without BatchNorm).
@@ -167,7 +179,7 @@ class Settings(BaseSettings):
     #   Applied in: CosineAnnealingLR(eta_min=...) when use_cosine_scheduler=True
     cosine_eta_min: float = 1e-6   # UNET_COSINE_ETA_MIN
 
-    # ── Training — data augmentations ─────────────────────────────────────────
+    # ── Training  data augmentations ─────────────────────────────────────────
     # All augmentations are applied jointly to the image AND the mask so spatial
     # correspondence is preserved.  Applied in: create_train_transforms() in
     # data_service.py.  Augmentations do NOT affect the validation set.
@@ -224,11 +236,33 @@ class Settings(BaseSettings):
     # aug_copy_paste: paste random anthill regions from positive tiles onto
     # negative tiles during training.  Creates genuinely new training examples
     # instead of merely repeating existing positive tiles via oversampling.
-    aug_copy_paste: bool = True
+    # DISABLED for Run 12: visual previews showed unrealistic compositions
+    # (anthills pasted on dense vegetation, oversized blobs, context mismatch).
+    # Replaced by aug_anthill_duplicate (intra-tile rotation), which preserves
+    # the natural context (lighting, soil type, surrounding vegetation).
+    aug_copy_paste: bool = False
 
     # aug_copy_paste_prob: probability of applying copy-paste to a negative tile.
     #   0.5 → half of negative tiles get a pasted anthill each epoch
-    aug_copy_paste_prob: float = 0.1
+    aug_copy_paste_prob: float = 0.4
+
+    # aug_anthill_duplicate: when a tile contains anthills in the label, extract
+    # them, rotate (90/180/270 + optional flip), and paste copies onto empty
+    # regions of the SAME tile.  Unlike copy-paste, the anthill remains in its
+    # natural context (no cross-image artefacts).  Multiplies positive pixel
+    # count per epoch without introducing artificial colour/lighting mismatches.
+    aug_anthill_duplicate: bool = True
+
+    # aug_anthill_duplicate_prob: probability of applying duplication to a
+    # positive tile (one that has anthills in the label).
+    #   0.7 → 70% of positive tiles get 1-N rotated copies appended each epoch
+    aug_anthill_duplicate_prob: float = 0.7
+
+    # aug_anthill_duplicate_max_copies: maximum number of rotated copies pasted
+    # onto a single tile.  Actual count is sampled from 1..max each call.
+    #   2 → 1 or 2 extra copies (default)
+    #   3 → up to 3 (use if dataset has many small isolated anthills)
+    aug_anthill_duplicate_max_copies: int = 2
 
     # ── Data ──────────────────────────────────────────────────────────────────
     # data_mode: where images come from.
@@ -246,6 +280,15 @@ class Settings(BaseSettings):
     #   False → reads from disk per batch (default, works for any dataset size)
     preload_dataset: bool = False
 
+    # max_ignore_pixel_pct: drop training tiles whose label has more than this
+    # fraction of ignore pixels (white = unlabelled border padding).  Many tiles
+    # at dataset borders are 70-95% white and contribute zero supervision signal
+    # per epoch  every batch step on them wastes compute.
+    #   0.7  → drop tiles where >70% pixels are ignore (recommended)
+    #   1.0  → disable filter (keep all tiles, original behaviour)
+    # Applied in: SegmentationDataset._match_pairs()  train set only, never val.
+    max_ignore_pixel_pct: float = 0.7
+
     # ── Pipeline ──────────────────────────────────────────────────────────────
     # pipeline_mode: what to run when the container starts.
     #   "train"    → train model, save weights to model_save_path
@@ -260,7 +303,7 @@ class Settings(BaseSettings):
 
     # anthill_confidence_threshold: minimum softmax probability (0.5–1.0) required
     # to classify a pixel as anthill. Values above 0.5 make the model less trigger-happy.
-    #   0.5  → same as argmax (default behaviour — accept any majority vote)
+    #   0.5  → same as argmax (default behaviour  accept any majority vote)
     #   0.7  → only mark pixel as anthill if model is ≥70% confident
     #   0.9  → very conservative; reduces false positives significantly
     anthill_confidence_threshold: float = 0.5

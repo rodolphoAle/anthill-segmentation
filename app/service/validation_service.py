@@ -3,14 +3,14 @@
 How it works
 -----------
 1. File metadata (IDs) for ``validacao/rgb`` and ``validacao/labels``
-   are fetched from Google Drive — no bulk download.
+   are fetched from Google Drive  no bulk download.
 2. For every matched RGB/label pair:
    a. Both files are downloaded as in-memory ``BytesIO`` buffers.
    b. Inference is run on the RGB image.
    c. Pixel accuracy, IoU, and Dice metrics are accumulated.
    d. If the predicted mask contains at least one anthill pixel
       (class = 1), the original image *and* the predicted mask are
-      saved to ``output_dir`` — these are the only files written to disk.
+      saved to ``output_dir``  these are the only files written to disk.
 3. Aggregated metrics are returned in a :class:`ValidationMetrics`
    dataclass.
 """
@@ -222,7 +222,7 @@ class ValidationService:
             )
 
         logger.info(
-            "Validation started — {} pair(s) (streaming, no disk writes unless anthill detected)",
+            "Validation started  {} pair(s) (streaming, no disk writes unless anthill detected)",
             len(pairs),
         )
 
@@ -246,7 +246,7 @@ class ValidationService:
             image = Image.open(rgb_buffer).convert("RGB")
             gt_mask = np.clip(np.array(Image.open(label_buffer)), 0, 1)
 
-            # Inference (offloaded to thread pool — keeps event loop free)
+            # Inference (offloaded to thread pool  keeps event loop free)
             pred_mask: np.ndarray = await asyncio.to_thread(
                 self._predict_sync, image
             )
@@ -287,7 +287,7 @@ class ValidationService:
         metrics.mean_dice = float(np.mean(metrics.per_image_dice))
 
         logger.info(
-            "Validation complete — "
+            "Validation complete  "
             "PixelAcc={:.4f}  mIoU={:.4f}  MeanDice={:.4f}  "
             "anthill detections={} (saved to '{}')",
             metrics.pixel_accuracy,

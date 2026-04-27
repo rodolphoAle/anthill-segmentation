@@ -8,7 +8,7 @@ Detecção automática de formigueiros em imagens aéreas utilizando uma rede U-
 
 ### Visão geral
 
-O pipeline acessa as imagens **diretamente do Google Drive via API** — nenhuma imagem é baixada em massa para o disco. Cada par (imagem RGB + máscara de label) é buscado em memória (`BytesIO`), processado e descartado antes do próximo par ser carregado.
+O pipeline acessa as imagens **diretamente do Google Drive via API**  nenhuma imagem é baixada em massa para o disco. Cada par (imagem RGB + máscara de label) é buscado em memória (`BytesIO`), processado e descartado antes do próximo par ser carregado.
 
 A estrutura de pastas esperada no Google Drive é:
 
@@ -27,7 +27,7 @@ A estrutura de pastas esperada no Google Drive é:
 ### Modo Treinamento (`run_training.py`)
 
 1. Os **metadados** (IDs e nomes) de todos os arquivos das pastas `treino/rgb` e `treino/labels` são listados via API do Drive.
-2. Um `StreamingSegmentationDataset` é criado — ele guarda apenas os IDs; as imagens são baixadas sob demanda a cada batch.
+2. Um `StreamingSegmentationDataset` é criado  ele guarda apenas os IDs; as imagens são baixadas sob demanda a cada batch.
 3. A U-Net é treinada com `CrossEntropyLoss` e otimizador `Adam`, com augmentações (flip horizontal, rotação aleatória).
 4. Ao fim de cada época, uma passagem de validação é executada com as imagens de `validacao/`.
 5. Os pesos do modelo são salvos em disco ao final (`u_net.pth`).
@@ -41,12 +41,12 @@ A estrutura de pastas esperada no Google Drive é:
 1. Os pesos salvos (`u_net.pth`) são carregados.
 2. Cada par de `validacao/rgb` + `validacao/labels` é baixado em memória, um a um.
 3. A inferência é executada na GPU e as seguintes métricas são calculadas por imagem:
-   - **Cobertura de formigueiro (%)** — percentual de pixels classificados como formigueiro
+   - **Cobertura de formigueiro (%)**  percentual de pixels classificados como formigueiro
    - **IoU** (Intersection over Union)
    - **Dice Score**
 4. Se a cobertura de formigueiro ultrapassar o threshold (`UNET_ANTHILL_SAVE_THRESHOLD`, padrão `40%`), o par é salvo em disco na pasta `validation_results/`:
-   - `<nome>_rgb.png` — imagem original
-   - `<nome>_mask.png` — máscara predita
+   - `<nome>_rgb.png`  imagem original
+   - `<nome>_mask.png`  máscara predita
 5. Ao final, as métricas agregadas são exibidas no terminal:
    - Pixel Accuracy global
    - mIoU médio
@@ -162,7 +162,7 @@ Todas as variáveis são definidas no arquivo `.env` na raiz do projeto:
 
 | Variável | Padrão | Descrição |
 |---|---|---|
-| `UNET_BASE_FOLDER_ID` | — | ID da pasta raiz no Google Drive |
+| `UNET_BASE_FOLDER_ID` |  | ID da pasta raiz no Google Drive |
 | `UNET_GOOGLE_CREDENTIALS_PATH` | `credentials.json` | Caminho para o JSON da service account |
 | `UNET_MODEL_SAVE_PATH` | `u_net.pth` | Arquivo onde os pesos são salvos |
 | `UNET_NUM_EPOCHS` | `20` | Número de épocas de treinamento |

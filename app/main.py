@@ -10,14 +10,14 @@ Or via Docker (see ``docker-compose.yml``)::
 
 Pipeline modes (set via ``UNET_PIPELINE_MODE`` env-var or ``.env`` file):
 
-* ``train``    — streams training + validation images from Drive,
+* ``train``     streams training + validation images from Drive,
                  trains the model, and saves weights to disk.
-* ``validate`` — loads saved weights, streams validation images from
+* ``validate``  loads saved weights, streams validation images from
                  Drive, computes metrics (pixel accuracy, mIoU, Dice),
                  and saves anthill-detected images to
                  ``UNET_VALIDATION_OUTPUT_DIR``.
 
-In both modes **images are never bulk-downloaded to disk** — each pair
+In both modes **images are never bulk-downloaded to disk**  each pair
 is fetched into memory, processed, and released before the next one
 is fetched.
 """
@@ -67,7 +67,7 @@ async def _run_train(
 
     state = training_service.state
     logger.info(
-        "Training complete — final loss: {:.4f} | val loss: {:.4f}",
+        "Training complete  final loss: {:.4f} | val loss: {:.4f}",
         state.current_loss,
         state.val_loss or 0.0,
     )
@@ -101,7 +101,7 @@ async def _run_validate(
     )
 
     logger.info(
-        "Results — PixelAcc={:.4f}  mIoU={:.4f}  MeanDice={:.4f}  "
+        "Results  PixelAcc={:.4f}  mIoU={:.4f}  MeanDice={:.4f}  "
         "Anthill detections={}",
         metrics.pixel_accuracy,
         metrics.mean_iou,

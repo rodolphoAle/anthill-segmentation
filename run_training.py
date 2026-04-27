@@ -9,7 +9,7 @@ Usage (inside the container)::
     python run_training.py --help   # full list of flags
 
 All flags are optional and override the value from .env / config.py defaults
-for THIS RUN ONLY — no container restart required.
+for THIS RUN ONLY  no container restart required.
 
 Parameter reference (see app/core/config.py for full documentation):
   --epochs N               Total training epochs

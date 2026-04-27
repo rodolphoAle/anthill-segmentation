@@ -7,9 +7,9 @@ labels stored locally.  Computes both image-level detection metrics
 (Pixel Accuracy / per-class IoU / per-class Dice / mIoU / Mean Dice).
 
 Output structure inside --save-dir:
-    somente_original/   — FN cases: anthill in GT label, not in prediction
-    somente_resultado/  — FP cases: anthill in prediction, not in GT label
-    metrics.txt         — full metrics report
+    somente_original/    FN cases: anthill in GT label, not in prediction
+    somente_resultado/   FP cases: anthill in prediction, not in GT label
+    metrics.txt          full metrics report
 
 Usage
 -----
@@ -115,10 +115,10 @@ def save_case(
     """Save diagnostics for a single FP or FN image into *dest_dir*.
 
     Four files are written per case:
-        {stem}_gt_label.png   — ground-truth label (anthill=white, ignore=grey)
-        {stem}_gt_rgb.png     — original RGB image
-        {stem}_pred_mask.png  — predicted mask (anthill=white)
-        {stem}_pred_rgb.png   — RGB saved by the validation service (or copy of GT RGB)
+        {stem}_gt_label.png    ground-truth label (anthill=white, ignore=grey)
+        {stem}_gt_rgb.png      original RGB image
+        {stem}_pred_mask.png   predicted mask (anthill=white)
+        {stem}_pred_rgb.png    RGB saved by the validation service (or copy of GT RGB)
     """
     dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -209,7 +209,7 @@ class Metrics:
     def report(self) -> str:  # noqa: PLR0912
         """Build and return the full metrics report string."""
         sep = "=" * 62
-        lines: list[str] = [sep, "  ANTHILL DETECTION — EVALUATION METRICS", sep, ""]
+        lines: list[str] = [sep, "  ANTHILL DETECTION  EVALUATION METRICS", sep, ""]
 
         lines += [
             f"  Total images evaluated:        {self.total_images}",
@@ -287,14 +287,14 @@ class Metrics:
             "-" * 62,
             "  Glossário de Métricas",
             "-" * 62,
-            "  [Nível de imagem — detecção]",
-            "  TP  True Positive  — imagem COM formigueiro na label e modelo",
+            "  [Nível de imagem  detecção]",
+            "  TP  True Positive   imagem COM formigueiro na label e modelo",
             "                       DETECTOU  → acerto correto",
-            "  FP  False Positive — imagem SEM formigueiro na label, mas",
+            "  FP  False Positive  imagem SEM formigueiro na label, mas",
             "                       modelo 'detectou' → alarme falso",
-            "  FN  False Negative — imagem COM formigueiro na label, mas",
+            "  FN  False Negative  imagem COM formigueiro na label, mas",
             "                       modelo NÃO detectou → formigueiro perdido",
-            "  TN  True Negative  — imagem SEM formigueiro na label e modelo",
+            "  TN  True Negative   imagem SEM formigueiro na label e modelo",
             "                       NÃO detectou nada → rejeição correta",
             "",
             "  Precision  = TP / (TP + FP)",
@@ -308,7 +308,7 @@ class Metrics:
             "  F1 Score   = 2 × Precision × Recall / (Precision + Recall)",
             "               Média harmônica entre Precision e Recall.",
             "",
-            "  [Nível de pixel — segmentação]",
+            "  [Nível de pixel  segmentação]",
             "  Pixel Accuracy  Proporção de pixels classificados corretamente",
             "                  (ignora pixels de borda marcados como 255).",
             "",
@@ -320,7 +320,7 @@ class Metrics:
             "        Medida de sobreposição similar ao IoU, mais sensível",
             "        a regiões pequenas: 2×interseção / (pred + label).",
             "",
-            "  mIoU  Mean IoU  — média do IoU das duas classes",
+            "  mIoU  Mean IoU   média do IoU das duas classes",
             "                   (fundo + formigueiro).",
             "",
             "  [Pastas de saída]",
@@ -383,7 +383,7 @@ async def main() -> None:
     save_dir = Path(args.save_dir)
     logger.info(f"Evaluation started with settings: {args}\n mode = {settings.data_mode}\n")
     if settings.data_mode == "online":
-        logger.info("Online mode — downloading validation data from Google Drive…")
+        logger.info("Online mode  downloading validation data from Google Drive…")
         drive_client = GoogleDriveClient()
         data_service = DataService(storage_client=drive_client)
         labels_dir, rgb_dir = await data_service.download_validation_from_drive()
@@ -434,10 +434,10 @@ async def main() -> None:
         metrics.update_pixel_level(gt_label, pred_mask)
 
         if gt_pos and not pred_pos:
-            # FN: anthill missed by model — save to somente_original
+            # FN: anthill missed by model  save to somente_original
             save_case(stem, fn_dir, gt_label, pred_mask, gt_rgb_path, pred_rgb_path)
         elif pred_pos and not gt_pos:
-            # FP: false detection — save to somente_resultado
+            # FP: false detection  save to somente_resultado
             save_case(stem, fp_dir, gt_label, pred_mask, gt_rgb_path, pred_rgb_path)
 
         if (idx + 1) % 100 == 0 or (idx + 1) == len(label_files):

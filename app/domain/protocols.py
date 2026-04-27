@@ -1,7 +1,7 @@
 """Structural typing contracts (Protocols) consumed by the service layer.
 
 Following the **Interface Segregation** and **Dependency Inversion**
-principles, high-level services depend on these thin protocols — never
+principles, high-level services depend on these thin protocols  never
 on concrete infrastructure classes.
 """
 
