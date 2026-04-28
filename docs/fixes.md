@@ -98,7 +98,26 @@ Alguns recortes não continham pixels da classe de interesse.
 
 ---
 
-## 7. Considerações finais
+## 7. Limitações da função de perda
+
+### Problema
+Loss tradicional (CrossEntropy/Dice) não lidava bem com:
+
+Desbalanceamento extremo
+
+Bordas imprecisas
+
+Otimização de IoU
+
+### Impacto
+IoU baixo (~0.30–0.35)
+Máscaras imprecisas
+
+### Solução 
+Uso de loss combinada: 
+``` 0.5 * Tversky + 0.3 * Lovász + 0.2 * Focal ```
+
+## 8. Considerações finais
 
 As correções aplicadas no pipeline de dados foram determinantes para a melhoria do desempenho do modelo.
 

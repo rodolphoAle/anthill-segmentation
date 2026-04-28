@@ -470,10 +470,7 @@ class TrainingService:
         val_loader: DataLoader[tuple],
         criterion: nn.Module,
     ) -> float:
-        # AMP disabled for the same reason as _train_loop: no BatchNorm means
-        # FP16 activations overflow in the bottleneck, producing NaN outputs.
-        # Inference has no backward pass so there is no speed benefit worth
-        # the instability risk.
+    
         self._model.eval()
         total_loss = 0.0
         batch_count = 0
@@ -499,19 +496,24 @@ class TrainingService:
     ) -> float:
         return self._evaluate_loop_sync(val_loader, criterion)
 
-    #  async public API 
 
     async def start_training(
         self,
-        train_loader: DataLoader[tuple],
-        val_loader: DataLoader[tuple],
+        train_loader: DataLoader,
+        val_loader: DataLoader,
         num_epochs: int | None = None,
         learning_rate: float | None = None,
     ) -> None:
-        """Run a full training + validation cycle asynchronously.
-
+        """Start training the model asynchronously.
+        
+        Args:
+            train_loader: DataLoader for training data.
+            val_loader: DataLoader for validation data.
+            num_epochs: Number of epochs to train (default from settings).
+            learning_rate: Learning rate (default from settings).
+            
         Raises:
-            TrainingAlreadyInProgressError: If a job is already running.
+            TrainingAlreadyInProgressError: If training is already running.
         """
         if self._state.status == TrainingStatus.TRAINING:
             raise TrainingAlreadyInProgressError(
@@ -525,80 +527,48 @@ class TrainingService:
         self._state.status = TrainingStatus.PREPARING
         self._state.total_epochs = epochs
 
+        # LOSS (Focal + Tversky + Lovász)
         class_weights = torch.tensor(
             [settings.class_weight_background, settings.class_weight_anthill],
             device=self._device,
         )
-        if settings.tversky_alpha > 0 and settings.tversky_beta > 0:
-            criterion: nn.Module = CombinedTverskyFocalLoss(
-                tversky_alpha=settings.tversky_alpha,
-                tversky_beta=settings.tversky_beta,
-                tversky_weight=settings.tversky_loss_weight,
-                lovasz_weight=settings.lovasz_loss_weight,
-                focal_gamma=settings.focal_loss_gamma if settings.focal_loss_gamma > 0 else 2.0,
-                class_weights=class_weights,
-                ignore_index=255,
-            )
-            focal_weight = 1.0 - settings.tversky_loss_weight - settings.lovasz_loss_weight
-            logger.info(
-                "Using Combined Loss "
-                "(tversky_weight={}, lovasz_weight={}, focal_weight={:.3f}, "
-                "alpha={}, beta={}, focal_gamma={}, class_weights=[{}, {}])",
-                settings.tversky_loss_weight,
-                settings.lovasz_loss_weight,
-                focal_weight,
-                settings.tversky_alpha,
-                settings.tversky_beta,
-                settings.focal_loss_gamma if settings.focal_loss_gamma > 0 else 2.0,
-                settings.class_weight_background,
-                settings.class_weight_anthill,
-            )
-        elif settings.focal_loss_gamma > 0:
-            criterion = FocalLoss(
-                gamma=settings.focal_loss_gamma,
-                weight=class_weights,
-                ignore_index=255,
-            )
-            logger.info(
-                "Using Focal Loss (gamma={}, weights=[{}, {}])",
-                settings.focal_loss_gamma,
-                settings.class_weight_background,
-                settings.class_weight_anthill,
-            )
-        else:
-            criterion = nn.CrossEntropyLoss(weight=class_weights, ignore_index=255)
+
+        criterion: nn.Module = CombinedTverskyFocalLoss(
+            tversky_alpha=0.4,
+            tversky_beta=0.6,
+            tversky_weight=0.5,
+            lovasz_weight=0.3,
+            focal_gamma=2.0,
+            class_weights=class_weights,
+            ignore_index=255,
+        )
+
+        logger.info(
+            "Using Combined Loss (Focal + Tversky + Lovász) "
+            "(tversky_weight=0.5, lovasz_weight=0.3, focal_weight=0.2)"
+        )
+
         optimizer = optim.Adam(self._model.parameters(), lr=lr)
-        if settings.use_cosine_scheduler:
-            scheduler: optim.lr_scheduler.LRScheduler = optim.lr_scheduler.CosineAnnealingLR(
-                optimizer,
-                T_max=epochs,
-                eta_min=settings.cosine_eta_min,
-            )
-            logger.info(
-                "LR scheduler: CosineAnnealingLR (T_max={}, eta_min={})",
-                epochs,
-                settings.cosine_eta_min,
-            )
-        else:
-            scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer,
-                mode="min",
-                factor=settings.scheduler_factor,
-                patience=settings.scheduler_patience,
-            )
-            logger.info(
-                "LR scheduler: ReduceLROnPlateau (patience={}, factor={})",
-                settings.scheduler_patience,
-                settings.scheduler_factor,
-            )
-        # GradScaler disabled: AMP is off in _train_loop, so the scaler is a
-        # passthrough kept only to avoid restructuring the training loop.
+
+        
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=settings.scheduler_factor,
+            patience=settings.scheduler_patience,
+        )
+        logger.info(
+            "LR scheduler: ReduceLROnPlateau (patience={}, factor={})",
+            settings.scheduler_patience,
+            settings.scheduler_factor,
+        )
+
         scaler = torch.amp.GradScaler("cuda", enabled=False)
 
         try:
             self._state.status = TrainingStatus.TRAINING
             logger.info(
-                "Training started  {} epochs on {}",
+                "Training started — {} epochs on {}",
                 epochs,
                 self._device,
             )
