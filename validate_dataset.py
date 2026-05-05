@@ -33,16 +33,16 @@ def validate_dataset_local(local_dir: str, patch_size: int = 256):
     print("\n Criando dataset com patch_size=256...")
     dataset = SegmentationDataset(
         local_dir=local_dir,
-        patch_size=256,
-        min_anthill_pixels=50,
-        max_patch_retries=10,
+        patch_size=512,
+        min_anthill_pixels=10,
+        max_patch_retries=30,
     )
     
     print(f" Dataset criado com {len(dataset)} imagens")
     
     # Criar dataloader
-    print("\n⚡ Criando dataloader (batch_size=4)...")
-    loader = DataLoader(dataset, batch_size=4, shuffle=False)
+    print("\n Criando dataloader (batch_size=2)...")
+    loader = DataLoader(dataset, batch_size=2, shuffle=False)
     
     # Pegar primeiro batch
     print(" Carregando primeiro batch...")
@@ -56,7 +56,7 @@ def validate_dataset_local(local_dir: str, patch_size: int = 256):
     print(" VALIDAÇÃO: Shape da Imagem")
     print("-"*70)
     
-    expected_shape = torch.Size([4, 3, 256, 256])
+    expected_shape = torch.Size([2, 3, 512, 512])
     actual_shape = images.shape
     
     print(f"   Esperado: {expected_shape}")
@@ -98,10 +98,10 @@ def validate_dataset_local(local_dir: str, patch_size: int = 256):
     # VALIDAÇÃO 3: Shape da máscara
     # ========================================================================
     print("\n" + "-"*70)
-    print("3️⃣  VALIDAÇÃO: Shape da Máscara")
+    print("VALIDAÇÃO: Shape da Máscara")
     print("-"*70)
     
-    expected_mask_shape = torch.Size([4, 256, 256])
+    expected_mask_shape = torch.Size([2, 512, 512])
     actual_mask_shape = masks.shape
     
     print(f"   Esperado: {expected_mask_shape}")
@@ -124,13 +124,13 @@ def validate_dataset_local(local_dir: str, patch_size: int = 256):
     total_ant = 0
     total_ign = 0
     
-    for i in range(4):
+    for i in range(2):
         mask = masks[i]
         bg = (mask == 0).sum().item()
         ant = (mask == 1).sum().item()
         ign = (mask == 255).sum().item()
         
-        total_pixels = 256 * 256
+        total_pixels = 512 * 512
         bg_pct = 100 * bg / total_pixels
         ant_pct = 100 * ant / total_pixels
         ign_pct = 100 * ign / total_pixels
@@ -146,7 +146,7 @@ def validate_dataset_local(local_dir: str, patch_size: int = 256):
         
         # Validar que tem formigueiros
         if ant < 50:
-            print(f"        AVISO: patch tem <50 formigueiros")
+            print(f"AVISO: patch tem <50 formigueiros")
     
     # Estatística total
     total_all = total_bg + total_ant + total_ign
