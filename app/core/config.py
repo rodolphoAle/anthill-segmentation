@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     #               → better recall, but may produce more false positives
     #   ↓ smaller → safer against false positives, but may miss small anthills
     #   Applied in: nn.CrossEntropyLoss(weight=[bg, anthill]) in training_service.py
-    class_weight_anthill: float = 4.0
+    class_weight_anthill: float = 6.0
 
     # focal_loss_gamma: gamma parameter for Focal Loss.
     # Focal Loss down-weights easy examples (plain soil correctly classified)
@@ -299,7 +299,7 @@ class Settings(BaseSettings):
     # the image to validation_output_dir.
     #   ↑ larger  → only saves tiles with large anthill regions (fewer, more confident)
     #   ↓ smaller → saves tiles with even tiny anthill detections (more, noisier)
-    anthill_save_threshold: float = 0.0
+    anthill_save_threshold: float = 40.0
 
     # anthill_confidence_threshold: minimum softmax probability (0.5–1.0) required
     # to classify a pixel as anthill. Values above 0.5 make the model less trigger-happy.
