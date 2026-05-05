@@ -1,121 +1,117 @@
 # UNet Segmentation Pipeline
 
-Detecção automática de formigueiros em imagens aéreas utilizando uma rede U-Net treinada com segmentação semântica binária (formigueiro / não formigueiro).
+Detecção automática de formigueiros em imagens aéreas utilizando uma rede U-Net com segmentação semântica binária (fundo vs formigueiro).
 
 ---
 
-## Como o projeto funciona
+## Visão Geral
 
-### Visão geral
+O pipeline executa:
 
-O pipeline acessa as imagens **diretamente do Google Drive via API**  nenhuma imagem é baixada em massa para o disco. Cada par (imagem RGB + máscara de label) é buscado em memória (`BytesIO`), processado e descartado antes do próximo par ser carregado.
+- Treinamento com patch training (512x512)
+- Inferência com threshold configurável
+- Pós-processamento com filtro de regiões
+- Avaliação com métricas (IoU, Dice, Pixel Accuracy)
 
-A estrutura de pastas esperada no Google Drive é:
+As imagens são consumidas diretamente do Google Drive via streaming, sem download em massa para disco.
+
+---
+
+## Estrutura esperada no Google Drive
 
 ```
 <pasta raiz>
 ├ treino/
-│   ├ rgb/         ← imagens RGB de treinamento
-│   └ labels/      ← máscaras de segmentação (.png)
+│   ├ rgb/
+│   └ labels/
 └ validacao/
-    ├ rgb/         ← imagens RGB de validação
-    └ labels/      ← máscaras de segmentação (.png)
+    ├ rgb/
+    └ labels/
 ```
 
 ---
 
-### Modo Treinamento (`run_training.py`)
+## Melhorias implementadas
 
-1. Os **metadados** (IDs e nomes) de todos os arquivos das pastas `treino/rgb` e `treino/labels` são listados via API do Drive.
-2. Um `StreamingSegmentationDataset` é criado  ele guarda apenas os IDs; as imagens são baixadas sob demanda a cada batch.
-3. A U-Net é treinada com `CrossEntropyLoss` e otimizador `Adam`, com augmentações (flip horizontal, rotação aleatória).
-4. Ao fim de cada época, uma passagem de validação é executada com as imagens de `validacao/`.
-5. Os pesos do modelo são salvos em disco ao final (`u_net.pth`).
+### Patch Training
 
-**Nada é escrito em disco durante o treinamento** (somente o arquivo `.pth` ao final).
+- Patches de 512x512
+- Seleção baseada em presença mínima de formigueiros
+- Redução do desbalanceamento de classes
 
----
+### Métricas corrigidas
 
-### Modo Validação (`run_validation.py`)
+- Máscaras RGB decodificadas corretamente
+- Pixels com valor 255 ignorados nas métricas
+- Cálculo correto de IoU e Dice
 
-1. Os pesos salvos (`u_net.pth`) são carregados.
-2. Cada par de `validacao/rgb` + `validacao/labels` é baixado em memória, um a um.
-3. A inferência é executada na GPU e as seguintes métricas são calculadas por imagem:
-   - **Cobertura de formigueiro (%)**  percentual de pixels classificados como formigueiro
-   - **IoU** (Intersection over Union)
-   - **Dice Score**
-4. Se a cobertura de formigueiro ultrapassar o threshold (`UNET_ANTHILL_SAVE_THRESHOLD`, padrão `40%`), o par é salvo em disco na pasta `validation_results/`:
-   - `<nome>_rgb.png`  imagem original
-   - `<nome>_mask.png`  máscara predita
-5. Ao final, as métricas agregadas são exibidas no terminal:
-   - Pixel Accuracy global
-   - mIoU médio
-   - Dice médio
-   - Total de detecções salvas
+### Treinamento otimizado
 
-**Somente imagens com formigueiro detectado acima do threshold são salvas em disco.**
+- Salvamento do modelo baseado no melhor IoU
+- Não dependente apenas da função de perda
+
+### Inferência aprimorada
+
+- Separação entre threshold de segmentação e de detecção
+- Filtro de regiões para remoção de ruído
 
 ---
 
-### Arquitetura do projeto
+## Configuração (.env)
 
+```env
+# Application 
+UNET_APP_NAME="UNet Segmentation Pipeline"
+UNET_DEBUG=false
+
+# Google Drive 
+UNET_GOOGLE_CREDENTIALS_PATH=credentials.json
+UNET_BASE_FOLDER_ID=<id-da-pasta>
+
+# Model 
+UNET_MODEL_SAVE_PATH=u_net.pth
+UNET_N_CHANNELS=3
+UNET_N_CLASSES=2
+
+# Training 
+UNET_BATCH_SIZE=2
+UNET_LEARNING_RATE=0.001
+UNET_NUM_EPOCHS=20
+UNET_NUM_WORKERS=2
+
+# Data 
+UNET_DATA_MODE=online
+UNET_LOCAL_DATA_DIR=data
+
+# Output
+UNET_ANTHILL_SAVE_THRESHOLD=40.0
+
+# Segmentation Threshold
+UNET_ANTHILL_CONFIDENCE_THRESHOLD=0.40
+
+# Region Filter
+UNET_USE_REGION_FILTER=true
+UNET_MIN_ANTHILL_REGION_PX=5
+UNET_MAX_ANTHILL_REGION_PX=5000
 ```
-app/
-├ core/
-│   ├ config.py              ← configurações via variáveis de ambiente
-│   ├ exceptions.py          ← exceções de domínio
-│   └ logging_config.py      ← configuração de logs (loguru)
-├ domain/
-│   ├ protocols.py           ← contratos (StorageClientProtocol)
-│   └ unet.py                ← arquitetura da U-Net
-├ infrastructure/
-│   ├ google_drive_client.py ← cliente assíncrono do Google Drive
-│   ├ segmentation_dataset.py   ← dataset para arquivos locais
-│   └ streaming_dataset.py      ← dataset streaming (sem disco)
-├ service/
-│   ├ data_service.py        ← criação de DataLoaders (streaming)
-│   ├ training_service.py    ← loop de treino e avaliação
-│   └ validation_service.py  ← validação com métricas e salvamento
-└ main.py                    ← dispatcher (train / validate)
-
-run_training.py    ← ponto de entrada para treinamento
-run_validation.py  ← ponto de entrada para validação
-```
 
 ---
 
-## Como executar
+## Execução
 
-### Pré-requisitos
-
-- [Docker](https://docs.docker.com/get-docker/) instalado
-- [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) instalado (para uso de GPU)
-- Arquivo `credentials.json` de uma Service Account do Google com acesso ao Drive na raiz do projeto
-- Arquivo `.env` configurado (veja a seção [Configuração](#configuração))
-
----
-
-### 1. Build da imagem
+### 1. Build
 
 ```bash
 docker compose build
 ```
 
-> Só é necessário rebuildar quando o `Dockerfile` ou o `requirements.txt` mudar. Alterações no código Python são refletidas instantaneamente pelo volume mount.
-
----
-
-### 2. Subir o container em background
+### 2. Subir container
 
 ```bash
 docker compose up -d
 ```
 
-O container fica rodando em modo idle (`sleep infinity`) aguardando você entrar.
-
----
-
-### 3. Entrar no container
+### 3. Acessar container
 
 ```bash
 docker exec -it unet-segmentation-pipeline bash
@@ -123,59 +119,88 @@ docker exec -it unet-segmentation-pipeline bash
 
 ---
 
-### 4. Treinar o modelo
+## 4. Validação do dataset
 
-Dentro do container:
+```bash
+python validate_dataset.py --local-dir ./data/
+```
+
+Valida:
+
+- Shape das imagens (3, 512, 512)
+- Normalização ImageNet
+- Distribuição de classes
+- Funcionamento do backward
+
+---
+
+## 5. Treinamento
 
 ```bash
 python run_training.py
 ```
 
-Os pesos serão salvos em `u_net.pth` (mapeado para o seu disco local pelo volume mount).
+O modelo:
+
+- Treina com patch training
+- Realiza validação por época
+- Salva o melhor modelo com base em IoU
 
 ---
 
-### 5. Validar o modelo
-
-Dentro do container:
+## 6. Validação do modelo
 
 ```bash
 python run_validation.py
 ```
 
-As imagens com formigueiro detectado são salvas em `validation_results/` (também visível no seu disco local).
+Saída:
+
+- Pixel Accuracy
+- Mean IoU
+- Mean Dice
+- Número de detecções
 
 ---
 
-### 6. Parar o container
+## Métricas
 
-```bash
-# Fora do container
-docker compose down
+| Métrica           | Descrição                                        |
+| ----------------- | ------------------------------------------------ |
+| IoU               | Sobreposição entre predição e ground truth       |
+| Dice              | Similar ao IoU, mais sensível a regiões pequenas |
+| Pixel Accuracy    | Percentual de pixels corretamente classificados  |
+| Anthill Detection | Percentual de área classificada como formigueiro |
+
+---
+
+## Observações
+
+- Pixel Accuracy pode ser inflada devido ao desbalanceamento de classes
+- As métricas mais relevantes são:
+  - IoU da classe formigueiro
+  - Dice
+
+---
+
+## Resultados esperados
+
+Após as melhorias:
+
+```
+IoU (formigueiro): 0.45 – 0.60+
+Dice:              0.60 – 0.75+
 ```
 
 ---
 
-## Configuração
+## Arquitetura
 
-Todas as variáveis são definidas no arquivo `.env` na raiz do projeto:
-
-| Variável | Padrão | Descrição |
-|---|---|---|
-| `UNET_BASE_FOLDER_ID` |  | ID da pasta raiz no Google Drive |
-| `UNET_GOOGLE_CREDENTIALS_PATH` | `credentials.json` | Caminho para o JSON da service account |
-| `UNET_MODEL_SAVE_PATH` | `u_net.pth` | Arquivo onde os pesos são salvos |
-| `UNET_NUM_EPOCHS` | `20` | Número de épocas de treinamento |
-| `UNET_BATCH_SIZE` | `4` | Tamanho do batch |
-| `UNET_LEARNING_RATE` | `0.001` | Taxa de aprendizado |
-| `UNET_N_CLASSES` | `2` | Número de classes (binário: 0=fundo, 1=formigueiro) |
-| `UNET_ANTHILL_SAVE_THRESHOLD` | `40.0` | % mínimo de pixels de formigueiro para salvar a imagem |
-| `UNET_VALIDATION_OUTPUT_DIR` | `validation_results` | Pasta de saída das detecções |
-| `UNET_DEBUG` | `false` | Ativa logs detalhados |
-
-Você pode sobrescrever qualquer variável na hora da execução:
-
-```bash
-UNET_NUM_EPOCHS=50 python run_training.py
-UNET_ANTHILL_SAVE_THRESHOLD=80.0 python run_validation.py
+```
+app/
+├ core/
+├ domain/
+├ infrastructure/
+├ service/
+└ main.py
 ```
