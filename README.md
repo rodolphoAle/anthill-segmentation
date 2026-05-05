@@ -6,7 +6,7 @@ Detecção automática de formigueiros em imagens aéreas utilizando uma rede U-
 
 ## Visão Geral
 
-O pipeline executa:
+O pipeline utiliza GPU automaticamente quando disponível, e executa:
 
 - Treinamento com patch training (512x512)
 - Inferência com threshold configurável

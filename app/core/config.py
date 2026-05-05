@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     #   ↑ larger  → smoother loss curve, more stable gradients, more VRAM
     #   ↓ smaller → noisier gradients (can help escape local minima), less VRAM
     #   Applied in: DataLoader(batch_size=...) inside data_service.py
-    batch_size: int = 4
+    batch_size: int = 2
 
     # learning_rate: step size for the Adam optimiser.
     #   ↑ larger  → faster convergence but risk of overshooting / loss oscillation
@@ -70,20 +70,20 @@ class Settings(BaseSettings):
     #   ↑ larger  → more learning time; monitor val_loss to detect overfitting
     #   ↓ smaller → faster experiment cycle
     #   Applied in: _train_loop outer loop inside training_service.py
-    num_epochs: int = 100
+    num_epochs: int = 20
 
     # num_workers: subprocess workers that load batches from disk in parallel.
     #   0   → main process only (use for debugging DataLoader issues)
     #   1-4 → parallel I/O; recommended when data_mode="local"
     #   Applied in: DataLoader(num_workers=...) inside data_service.py
-    num_workers: int = 5
+    num_workers: int = 2
 
     # device: compute backend.
     #   "auto" → CUDA if available, otherwise CPU
     #   "cuda" → force GPU (fails if no CUDA)
     #   "cpu"  → force CPU (very slow for training, useful for debugging)
     #   Applied in: TrainingService._resolve_device() inside training_service.py
-    device: str = "cuda"
+    device: str = "auto"
 
     # ── Training  loss & optimisation ────────────────────────────────────────
 
@@ -303,17 +303,18 @@ class Settings(BaseSettings):
 
     # anthill_confidence_threshold: minimum softmax probability (0.5–1.0) required
     # to classify a pixel as anthill. Values above 0.5 make the model less trigger-happy.
+    #   0.40 → more sensitive; improves recall for small anthills
     #   0.5  → same as argmax (default behaviour  accept any majority vote)
     #   0.7  → only mark pixel as anthill if model is ≥70% confident
     #   0.9  → very conservative; reduces false positives significantly
-    anthill_confidence_threshold: float = 0.5
+    anthill_confidence_threshold: float = 0.40
 
     # min_anthill_region_px: minimum number of connected pixels to keep as a valid
     # anthill detection. Isolated fragments smaller than this are removed (set to
     # background) after the confidence threshold is applied.
     #   ↑ larger → fewer, bigger detections (removes scattered noise)
     #   ↓ smaller (→ 1) → keeps every pixel cluster, even single-pixel noise
-    min_anthill_region_px: int = 100
+    min_anthill_region_px: int = 5
 
     # max_anthill_region_px: maximum number of connected pixels allowed for a
     # region to be kept as a valid anthill detection. Very large regions are
