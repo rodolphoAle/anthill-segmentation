@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 def iou_score(pred, target, ignore_index=255):
     pred = torch.argmax(pred, dim=1)
 
@@ -11,6 +12,7 @@ def iou_score(pred, target, ignore_index=255):
 
     intersection = ((pred == 1) & (target == 1)).float().sum()
     union = ((pred == 1) | (target == 1)).float().sum()
+
     if union == 0:
         return torch.tensor(1.0, device=pred.device)
 
@@ -26,10 +28,11 @@ def dice_score(pred, target, ignore_index=255):
 
     intersection = ((pred == 1) & (target == 1)).float().sum()
     union = (pred == 1).float().sum() + (target == 1).float().sum()
+
     if union == 0:
         return torch.tensor(1.0, device=pred.device)
 
-    return (2. * intersection) / union
+    return (2.0 * intersection) / (union + 1e-8)
 
 
 class FocalLoss(nn.Module):
@@ -51,12 +54,22 @@ class FocalLoss(nn.Module):
         valid = targets != self.ignore_index
         ce = ce[valid]
 
+        if ce.numel() == 0:
+            return inputs.sum() * 0.0
+
         pt = torch.exp(-ce)
         return (((1 - pt) ** self.gamma) * ce).mean()
 
 
 class FocalTverskyLoss(nn.Module):
-    def __init__(self, alpha=0.4, beta=0.6, gamma=1.33, smooth=1.0, ignore_index=255):
+    def __init__(
+        self,
+        alpha=0.4,
+        beta=0.6,
+        gamma=1.33,
+        smooth=1.0,
+        ignore_index=255,
+    ):
         super().__init__()
         self.alpha = alpha
         self.beta = beta
@@ -73,6 +86,9 @@ class FocalTverskyLoss(nn.Module):
 
         pred = pred[valid]
         target = target[valid]
+
+        if pred.numel() == 0:
+            return inputs.sum() * 0.0
 
         tp = (pred * target).sum()
         fp = (pred * (1 - target)).sum()
@@ -121,19 +137,22 @@ class LovaszHingeLoss(nn.Module):
 
         return torch.dot(F.relu(errors_sorted), grad)
 
-    
+
 class ModelManager:
     def __init__(self, model, device=None):
         self.model = model
-        self.device = device or (torch.device('cuda' if torch.cuda.is_available() else 'cpu'))
+        self.device = device or (
+            torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        )
         self.model.to(self.device)
 
     def train(self, train_loader, val_loader, criterion, optimizer, epochs=20):
-        best_loss = float('inf')
+        best_iou = 0.0
 
         for epoch in range(epochs):
             self.model.train()
-            train_loss = 0
+            train_loss = 0.0
+            train_batches = 0
 
             for x, y in train_loader:
                 x, y = x.to(self.device), y.to(self.device)
@@ -146,29 +165,39 @@ class ModelManager:
                 optimizer.step()
 
                 train_loss += loss.item()
+                train_batches += 1
+
+            avg_train_loss = train_loss / max(train_batches, 1)
 
             val_loss, val_iou, val_dice = self.evaluate(val_loader, criterion)
 
-            lr = optimizer.param_groups[0]['lr']
+            lr = optimizer.param_groups[0]["lr"]
+
             print(
                 f"Epoch {epoch + 1}/{epochs} | "
-                f"Train: {train_loss:.4f} | "
+                f"Train: {avg_train_loss:.4f} | "
                 f"Val: {val_loss:.4f} | "
                 f"IoU: {val_iou:.4f} | "
                 f"Dice: {val_dice:.4f} | "
+                f"Best IoU: {best_iou:.4f} | "
                 f"LR: {lr:.2e}"
             )
 
-            if val_loss < best_loss:
-                best_loss = val_loss
-                best_model_path = f"best_model_epoch{epoch+1}_iou{val_iou:.3f}.pth"
+            if val_iou > best_iou:
+                best_iou = val_iou
+                best_model_path = f"best_model_epoch{epoch + 1}_iou{val_iou:.3f}_dice{val_dice:.3f}.pth"
                 self.save(best_model_path)
+
+                print(
+                    f"Novo melhor modelo salvo: {best_model_path} "
+                    f"| IoU: {val_iou:.4f} | Dice: {val_dice:.4f}"
+                )
 
     def evaluate(self, dataloader, criterion):
         self.model.eval()
-        total_loss = 0
-        total_iou = 0
-        total_dice = 0
+        total_loss = 0.0
+        total_iou = 0.0
+        total_dice = 0.0
         batches = 0
 
         with torch.no_grad():
