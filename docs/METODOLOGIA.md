@@ -251,7 +251,7 @@ rgb_crop = np.rot90(rgb_crop, k)
 **O que é:** rede neural convolucional especializada em segmentação semântica, originalmente proposta para imagens médicas (Ronneberger et al., 2015).
 
 **Como funciona (simples):** a U-Net tem formato de "U":
-- **Lado esquerdo (encoder):** comprime a imagem progressivamente, extraindo características cada vez mais abstratas mas perdendo resolução espacial. 5 níveis: 64 → 128 → 256 → 512 → 1024 filtros.
+- **Lado esquerdo (encoder):** comprime a imagem progressivamente, extraindo características cada vez mais abstratas mas perdendo resolução espacial. 5 níveis: 64 → 128 → 256 → 256 → 1024 filtros.
 - **Lado direito (decoder):** "descomprime" reconstruindo resolução, combinando informação espacial original com características aprendidas.
 - **Skip connections (atalhos):** ligam diretamente cada nível do encoder ao nível correspondente do decoder. Isso permite que o decoder use detalhes finos da imagem original que seriam perdidos só com o caminho do encoder→decoder.
 

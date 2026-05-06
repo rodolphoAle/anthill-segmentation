@@ -8,7 +8,7 @@ Detecção automática de formigueiros em imagens aéreas utilizando uma rede U-
 
 O pipeline utiliza GPU automaticamente quando disponível, e executa:
 
-- Treinamento com patch training (512x512)
+- Treinamento com patch training (256x256)
 - Inferência com threshold configurável
 - Pós-processamento com filtro de regiões
 - Avaliação com métricas (IoU, Dice, Pixel Accuracy)
@@ -35,7 +35,7 @@ As imagens são consumidas diretamente do Google Drive via streaming, sem downlo
 
 ### Patch Training
 
-- Patches de 512x512
+- Patches de 256x256
 - Seleção baseada em presença mínima de formigueiros
 - Redução do desbalanceamento de classes
 
@@ -127,7 +127,7 @@ python validate_dataset.py --local-dir ./data/
 
 Valida:
 
-- Shape das imagens (3, 512, 512)
+- Shape das imagens (3, 256, 256)
 - Normalização ImageNet
 - Distribuição de classes
 - Funcionamento do backward

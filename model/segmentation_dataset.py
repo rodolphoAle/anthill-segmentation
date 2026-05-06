@@ -26,7 +26,7 @@ class SegmentationDataset(Dataset):
                                 Default: 10
     """
     def __init__(self, drive_manager=None, rgb_folder_id=None, labels_folder_id=None,
-                 transforms=None, local_dir=None, patch_size=512, min_anthill_pixels=10,
+                 transforms=None, local_dir=None, patch_size=256, min_anthill_pixels=10,
                  max_patch_retries=30):
 
         self.transforms = transforms

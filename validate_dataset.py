@@ -22,7 +22,7 @@ except ImportError:
     sys.exit(1)
 
 
-def validate_dataset_local(local_dir: str, patch_size: int = 512):
+def validate_dataset_local(local_dir: str, patch_size: int = 256):
     """Validar dataset com dados locais."""
     
     print("\n" + "="*70)
@@ -30,10 +30,10 @@ def validate_dataset_local(local_dir: str, patch_size: int = 512):
     print("="*70)
     
     # Criar dataset COM PATCH TRAINING
-    print("\n Criando dataset com patch_size=512...")
+    print("\n Criando dataset com patch_size=256...")
     dataset = SegmentationDataset(
         local_dir=local_dir,
-        patch_size=512,
+        patch_size=256,
         min_anthill_pixels=10,
         max_patch_retries=30,
     )
@@ -58,7 +58,7 @@ def validate_dataset_local(local_dir: str, patch_size: int = 512):
     print(" VALIDAÇÃO: Shape da Imagem")
     print("-"*70)
     
-    expected_shape = torch.Size([2, 3, 512, 512])
+    expected_shape = torch.Size([2, 3, 256, 256])
     actual_shape = images.shape
     
     print(f"   Esperado: {expected_shape}")
@@ -103,7 +103,7 @@ def validate_dataset_local(local_dir: str, patch_size: int = 512):
     print("VALIDAÇÃO: Shape da Máscara")
     print("-"*70)
     
-    expected_mask_shape = torch.Size([2, 512, 512])
+    expected_mask_shape = torch.Size([2, 256, 256])
     actual_mask_shape = masks.shape
     
     print(f"   Esperado: {expected_mask_shape}")
@@ -132,7 +132,7 @@ def validate_dataset_local(local_dir: str, patch_size: int = 512):
         ant = (mask == 1).sum().item()
         ign = (mask == 255).sum().item()
         
-        total_pixels = 512 * 512
+        total_pixels = 256 * 256
         bg_pct = 100 * bg / total_pixels
         ant_pct = 100 * ant / total_pixels
         ign_pct = 100 * ign / total_pixels
@@ -196,9 +196,9 @@ def validate_dataset_local(local_dir: str, patch_size: int = 512):
     print("="*70)
     
     print("\n Resumo:")
-    print("    Shape de imagem correto (3, 512, 512)")
+    print("    Shape de imagem correto (3, 256, 256)")
     print("    Imagem normalizada com ImageNet stats")
-    print("    Shape de máscara correto (512, 512)")
+    print("    Shape de máscara correto (256, 256)")
     print(f"    Distribuição de classes ótima ({100*total_ant/total_all:.1f}% formigueiros)")
     print("    Backward pass funcionando")
     
@@ -228,8 +228,8 @@ def main():
     parser.add_argument(
         "--patch-size",
         type=int,
-        default=512,
-        help="Tamanho do patch (default: 512 para validação com patch training)"
+        default=256,
+        help="Tamanho do patch (default: 256 para validação com patch training)"
     )
     
     args = parser.parse_args()
@@ -240,7 +240,7 @@ def main():
         print("\n Erro: --local-dir é obrigatório")
         print("\nExemplo:")
         print("  python validate_dataset.py --local-dir ./data/")
-        print("  python validate_dataset.py --local-dir /caminho/para/dados/ --patch-size 512")
+        print("  python validate_dataset.py --local-dir /caminho/para/dados/ --patch-size 256")
         sys.exit(1)
     
     # Validar dataset

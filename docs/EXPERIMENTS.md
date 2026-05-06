@@ -34,7 +34,7 @@ Histórico completo de treinamento e validação do modelo U-Net para detecção
 | Tipo                         | Encoder-decoder com skip connections                |
 | Entrada                      | 3 canais (RGB)                                      |
 | Saída                       | 2 classes (fundo, formigueiro)                      |
-| Profundidade                 | 5 níveis (64 → 128 → 256 → 512 → 1024 filtros) |
+| Profundidade                 | 5 níveis (64 → 128 → 256 → 256 → 1024 filtros) |
 | Decoder (Runs 01–04)        | `nn.Upsample(bilinear)` + double conv             |
 | Decoder (Run 05+)            | `nn.ConvTranspose2d` + double conv                |
 | Normalização (Runs 01–04) | Nenhuma                                             |

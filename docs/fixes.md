@@ -76,7 +76,7 @@ Predominância de pixels de fundo no dataset (~90%), com baixa representatividad
 
 ### Solução
 
-Aplicação da técnica de Patch Training, com extração de recortes de tamanho fixo (512×512 pixels), priorizando regiões com maior presença de formigueiros.
+Aplicação da técnica de Patch Training, com extração de recortes de tamanho fixo (256×256 pixels), priorizando regiões com maior presença de formigueiros.
 
 Impacto da abordagem:
 
