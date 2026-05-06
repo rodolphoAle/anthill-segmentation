@@ -1,4 +1,4 @@
-# Training & Validation Experiments - UNet Anthill Segmentation
+# 4. Training & Validation Experiments - UNet Anthill Segmentation
 
 Histórico completo de treinamento e validação do modelo U-Net para detecção de formigueiros em imagens aéreas.
 
