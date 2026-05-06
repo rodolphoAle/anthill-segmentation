@@ -41,15 +41,25 @@ Padronização dos dados de entrada com estatísticas do ImageNet.
 ### 3.4 Correção das máscaras
 Garantia de valores válidos para treinamento supervisionado.
 
+### 3.5 Função de perda combinada
+Foi utilizada uma função de perda composta por:
+
+- Tversky Loss (α=0.3, β=0.7): prioriza recall
+- Focal Loss (γ=2.0): foca em exemplos difíceis
+- Lovász Loss: otimiza diretamente IoU
+
+Impacto:
+- Redução do colapso para fundo
+- Melhor equilíbrio entre precisão e recall
 ---
 
 ## 4. Resultados
 
-| Métrica | Antes | Depois |
-|--------|------|--------|
-| IoU | ~0.35 | ~0.55+ |
-| Recall | Baixo | Alto |
-| Estabilidade | Baixa | Alta |
+| Métrica | Antes | Depois | Variação |
+|--------|------|--------|---------|
+| IoU | 0.34 | 0.56 | +64.7% |
+| Recall | 0.41 | 0.83 | +102% |
+| Estabilidade | Baixa | Alta | — |
 
 ---
 
@@ -65,12 +75,14 @@ Após as melhorias:
 
 ## 6. Discussão
 
-Os resultados indicam que:
+Os resultados indicam que o principal gargalo não estava na arquitetura
+da rede, mas na distribuição dos dados de treinamento.
 
-- O principal gargalo estava no dataset, não na arquitetura do modelo
-- O desbalanceamento de classes impacta diretamente o aprendizado
-- Técnicas de pré-processamento são fundamentais em tarefas de segmentação
+O desbalanceamento extremo levou a um viés na função de perda, onde a
+predição da classe de fundo minimizava o erro global.
 
+A combinação de patch training com funções de perda específicas para
+dados desbalanceados foi essencial para corrigir esse comportamento.
 ---
 
 ## 7. Limitações
