@@ -26,8 +26,8 @@ class SegmentationDataset(Dataset):
                                 Default: 10
     """
     def __init__(self, drive_manager=None, rgb_folder_id=None, labels_folder_id=None,
-                 transforms=None, local_dir=None, patch_size=256, min_anthill_pixels=50,
-                 max_patch_retries=10):
+                 transforms=None, local_dir=None, patch_size=512, min_anthill_pixels=10,
+                 max_patch_retries=30):
 
         self.transforms = transforms
         self.local_dir = local_dir
@@ -102,9 +102,7 @@ class SegmentationDataset(Dataset):
             (image_patch, mask_patch_decoded) ou (image_inteira, label_inteira) se <patch_size
         """
         w, h = image.size
-        patch_area = patch_size * patch_size
-        min_anthill_ratio = 0.02  # 2% de formigueiros mínimo
-        min_anthill_count = int(patch_area * min_anthill_ratio)
+        min_anthill_count = self.min_anthill_pixels
         
         # Se imagem é menor que patch_size, retornar imagem inteira
         if w < patch_size or h < patch_size:
@@ -200,4 +198,4 @@ class SegmentationDataset(Dataset):
         
         mask_tensor = torch.tensor(label, dtype=torch.long)
         
-        return image_tensor, mask_tensor
+        return image_tensor, mask_tensor, os.path.basename(rgb_path)

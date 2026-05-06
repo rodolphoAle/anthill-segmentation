@@ -32,6 +32,7 @@ Parameter reference (see app/core/config.py for full documentation):
 import argparse
 import asyncio
 import os
+from app.main import main  # noqa: E402
 
 
 def _apply_cli_overrides() -> None:
@@ -121,6 +122,5 @@ def _apply_cli_overrides() -> None:
 _apply_cli_overrides()
 os.environ.setdefault("UNET_PIPELINE_MODE", "train")
 
-from app.main import main  # noqa: E402
 
 asyncio.run(main())

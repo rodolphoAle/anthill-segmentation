@@ -22,7 +22,7 @@ except ImportError:
     sys.exit(1)
 
 
-def validate_dataset_local(local_dir: str, patch_size: int = 256):
+def validate_dataset_local(local_dir: str, patch_size: int = 512):
     """Validar dataset com dados locais."""
     
     print("\n" + "="*70)
@@ -30,7 +30,7 @@ def validate_dataset_local(local_dir: str, patch_size: int = 256):
     print("="*70)
     
     # Criar dataset COM PATCH TRAINING
-    print("\n Criando dataset com patch_size=256...")
+    print("\n Criando dataset com patch_size=512...")
     dataset = SegmentationDataset(
         local_dir=local_dir,
         patch_size=512,
@@ -194,15 +194,15 @@ def validate_dataset_local(local_dir: str, patch_size: int = 256):
     print("="*70)
     
     print("\n Resumo:")
-    print("    Shape de imagem correto (3, 256, 256)")
+    print("    Shape de imagem correto (3, 512, 512)")
     print("    Imagem normalizada com ImageNet stats")
-    print("    Shape de máscara correto (256, 256)")
+    print("    Shape de máscara correto (512, 512)")
     print(f"    Distribuição de classes ótima ({100*total_ant/total_all:.1f}% formigueiros)")
     print("    Backward pass funcionando")
     
     print("\n Próximos passos:")
     print("   1. Integrar dataset ao seu run_training.py")
-    print("   2. Rodar treinamento: python run_training.py --epochs 5")
+    print("   2. Rodar treinamento: python run_training.py --epochs 20")
     print("   3. Monitorar IoU nos logs (deve aumentar!)")
     print("   4. Comparar com versão anterior (esperar +60%)")
     
@@ -226,8 +226,8 @@ def main():
     parser.add_argument(
         "--patch-size",
         type=int,
-        default=256,
-        help="Tamanho do patch (default: 256)"
+        default=512,
+        help="Tamanho do patch (default: 512 para validação com patch training)"
     )
     
     args = parser.parse_args()
