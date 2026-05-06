@@ -47,7 +47,9 @@ def validate_dataset_local(local_dir: str, patch_size: int = 512):
     # Pegar primeiro batch
     print(" Carregando primeiro batch...")
     batch = next(iter(loader))
-    images, masks = batch
+    images, masks, names = batch
+
+    print(f"Arquivos do batch: {names}")
     
     # ========================================================================
     # VALIDAÇÃO 1: Shape da imagem
