@@ -18,10 +18,10 @@ class UNet(nn.Module):
         self.down3 = nn.Sequential(nn.MaxPool2d(2), double_conv(256, 256))
         self.down4 = nn.Sequential(nn.MaxPool2d(2), double_conv(256, 1024))
         self.up1 = nn.ConvTranspose2d(1024, 256, 2, stride=2)
-        self.conv1 = double_conv(1024, 256)        
-        
+        self.conv1 = double_conv(512, 256)
+
         self.up2 = nn.ConvTranspose2d(256, 256, 2, stride=2)
-        self.conv2 = double_conv(256, 256)
+        self.conv2 = double_conv(512, 256)
 
         self.up3 = nn.ConvTranspose2d(256, 128, 2, stride=2)
         self.conv3 = double_conv(256, 128)

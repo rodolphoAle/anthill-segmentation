@@ -76,14 +76,14 @@ class Settings(BaseSettings):
     #   0   → main process only (use for debugging DataLoader issues)
     #   1-4 → parallel I/O; recommended when data_mode="local"
     #   Applied in: DataLoader(num_workers=...) inside data_service.py
-    num_workers: int = 2
+    num_workers: int = 4
 
     # device: compute backend.
     #   "auto" → CUDA if available, otherwise CPU
     #   "cuda" → force GPU (fails if no CUDA)
     #   "cpu"  → force CPU (very slow for training, useful for debugging)
     #   Applied in: TrainingService._resolve_device() inside training_service.py
-    device: str = "auto"
+    device: str = "cuda"
 
     # ── Training  loss & optimisation ────────────────────────────────────────
 
@@ -299,7 +299,7 @@ class Settings(BaseSettings):
     # the image to validation_output_dir.
     #   ↑ larger  → only saves tiles with large anthill regions (fewer, more confident)
     #   ↓ smaller → saves tiles with even tiny anthill detections (more, noisier)
-    anthill_save_threshold: float = 40.0
+    anthill_save_threshold: float = 0.0
 
     # anthill_confidence_threshold: minimum softmax probability (0.5–1.0) required
     # to classify a pixel as anthill. Values above 0.5 make the model less trigger-happy.
