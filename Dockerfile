@@ -38,5 +38,5 @@ COPY . .
 
 # Keep the container alive so the user can exec into it manually.
 # Run:  docker exec -it <container_id> bash
-# Then: python run_training.py   OR   python run_validation.py
+# Then: python -m app.main train   OR   python -m app.main validate
 CMD ["sleep", "infinity"]

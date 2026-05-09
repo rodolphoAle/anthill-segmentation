@@ -31,7 +31,7 @@ project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
 from app.core.config import settings
-from app.service.data_service import DataService, create_train_transforms
+from app.infrastructure.augmentations import create_train_transforms
 from app.infrastructure.segmentation_dataset import SegmentationDataset
 from app.domain.protocols import StorageClientProtocol
 

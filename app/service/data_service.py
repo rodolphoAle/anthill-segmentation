@@ -16,13 +16,16 @@ from __future__ import annotations
 from pathlib import Path
 
 import torch
-import torchvision.transforms.v2 as transforms
-from loguru import logger # pyright: ignore[reportMissingImports]
+from loguru import logger  # pyright: ignore[reportMissingImports]
 from torch.utils.data import DataLoader
 
 from app.core.config import settings
 from app.core.exceptions import DatasetNotFoundError, FolderNotFoundError
 from app.domain.protocols import StorageClientProtocol
+from app.infrastructure.augmentations import (
+    create_image_only_transforms,
+    create_train_transforms,
+)
 from app.infrastructure.segmentation_dataset import SegmentationDataset
 from app.infrastructure.streaming_dataset import StreamingSegmentationDataset
 
@@ -36,75 +39,6 @@ def _collate_with_names(
     names = [item[2] for item in batch]
     return images, masks, names
 
-
-def create_train_transforms() -> transforms.Compose | None:
-    """Build geometric + photometric augmentations from settings.
-
-    All transforms that affect spatial layout (flip, rotation) are applied
-    jointly to image AND mask.  ColorJitter is image-only and is appended
-    outside the joint pipeline — the caller in SegmentationDataset.__getitem__
-    applies self._augmentations to both, so ColorJitter must NOT be included
-    here when joint application would corrupt the mask.
-
-    Note: torchvision v2 transforms handle (image, mask) pairs correctly for
-    geometric ops.  ColorJitter is safe on PIL images and is only applied to
-    the image tensor AFTER the joint step via a second transform in the dataset.
-
-    Returns None if all augmentations are disabled.
-    """
-    transform_list: list[transforms.Transform] = []
-
-    if settings.aug_horizontal_flip:
-        transform_list.append(transforms.RandomHorizontalFlip())
-
-    if settings.aug_vertical_flip:
-        transform_list.append(transforms.RandomVerticalFlip())
-
-    # RandomChoice among [0°, 90°, 180°, 270°] — safe for aerial imagery
-    # which has no fixed orientation.  Applied with p=0.5.
-    if settings.aug_random_rotate_90:
-        transform_list.append(
-            transforms.RandomApply(
-                [transforms.RandomChoice([
-                    transforms.RandomRotation((90, 90)),
-                    transforms.RandomRotation((180, 180)),
-                    transforms.RandomRotation((270, 270)),
-                ])],
-                p=0.5,
-            )
-        )
-
-    if settings.aug_rotation_degrees > 0:
-        transform_list.append(transforms.RandomRotation(settings.aug_rotation_degrees))
-
-    if settings.aug_elastic_transform:
-        transform_list.append(
-            transforms.RandomApply(
-                [transforms.ElasticTransform(alpha=settings.aug_elastic_alpha, sigma=settings.aug_elastic_sigma)],
-                p=0.3,
-            )
-        )
-
-    if not transform_list:
-        return None
-
-    return transforms.Compose(transform_list)
-
-
-def create_image_only_transforms() -> transforms.Compose | None:
-    """Photometric augmentations applied to the image tensor only (not the mask).
-
-    Returns None if color jitter is disabled, so callers can skip the step.
-    """
-    if not settings.aug_color_jitter:
-        return None
-    return transforms.Compose([
-        transforms.ColorJitter(
-            brightness=settings.aug_color_jitter_brightness,
-            contrast=settings.aug_color_jitter_contrast,
-            saturation=settings.aug_color_jitter_saturation,
-        )
-    ])
 
 
 #  Service 

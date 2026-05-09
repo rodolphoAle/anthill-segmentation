@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import io
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -18,18 +17,9 @@ from scipy.ndimage import label as ndimage_label
 
 from app.core.config import settings
 from app.core.exceptions import DatasetNotFoundError, FolderNotFoundError
+from app.domain.mask_utils import decode_rgb_mask
+from app.domain.metrics import ValidationMetrics
 from app.domain.protocols import StorageClientProtocol
-
-
-@dataclass
-class ValidationMetrics:
-    total_images: int = 0
-    anthill_detections: int = 0
-    pixel_accuracy: float = 0.0
-    mean_iou: float = 0.0
-    mean_dice: float = 0.0
-    per_image_iou: list[float] = field(default_factory=list)
-    per_image_dice: list[float] = field(default_factory=list)
 
 
 class ValidationService:
@@ -72,26 +62,8 @@ class ValidationService:
 
     @staticmethod
     def _decode_gt_mask(mask_image: Image.Image) -> np.ndarray:
-        """
-        Decode RGB label mask into class ids:
-        0   = background
-        1   = anthill
-        255 = ignore / unlabeled
-        """
-        mask_arr = np.array(mask_image.convert("RGB"))
-
-        r = mask_arr[:, :, 0]
-        g = mask_arr[:, :, 1]
-        b = mask_arr[:, :, 2]
-
-        is_anthill = (r > 150) & (g < 100) & (b < 100)
-        is_background = (r < 50) & (g < 50) & (b < 50)
-
-        label = np.full(mask_arr.shape[:2], 255, dtype=np.uint8)
-        label[is_background] = 0
-        label[is_anthill] = 1
-
-        return label
+        """Decode RGB label mask into class ids using shared utility."""
+        return decode_rgb_mask(mask_image)
 
     def _predict_sync(self, image: Image.Image) -> np.ndarray:
         tensor = self._transform(image).unsqueeze(0).to(self._device)

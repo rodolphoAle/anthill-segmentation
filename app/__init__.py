@@ -1,1 +1,1 @@
-"""UNet Segmentation API  async FastAPI application."""
+"""UNet Segmentation Pipeline — Anthill detection in aerial imagery."""

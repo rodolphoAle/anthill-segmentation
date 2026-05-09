@@ -1,26 +1,159 @@
 # UNet Segmentation Pipeline
 
-Detecção automática de formigueiros em imagens aéreas utilizando uma rede U-Net com segmentação semântica binária (fundo vs formigueiro).
+Automatic detection of anthills (*formigueiros*) in aerial imagery using a U-Net architecture with binary semantic segmentation (background vs. anthill).
 
 ---
 
-## Visão Geral
+## Overview
 
-O pipeline utiliza GPU automaticamente quando disponível, e executa:
-
-- Treinamento com patch training (256x256)
-- Inferência com threshold configurável
-- Pós-processamento com filtro de regiões
-- Avaliação com métricas (IoU, Dice, Pixel Accuracy)
-
-As imagens são consumidas diretamente do Google Drive via streaming, sem download em massa para disco.
+- **Training** with configurable augmentations (flip, rotation, elastic, copy-paste, anthill duplication)
+- **Inference** with adjustable confidence threshold and connected-component filtering
+- **Evaluation** with full metrics (IoU, Dice, Pixel Accuracy, Precision, Recall, F1)
+- **GPU acceleration** via CUDA with automatic fallback to CPU
+- **Data sources**: local disk or streaming from Google Drive
 
 ---
 
-## Estrutura esperada no Google Drive
+## Project Structure
 
 ```
-<pasta raiz>
+.
+├ app/                              # Main application package
+│   ├ main.py                       # Async CLI entry point (train / validate)
+│   ├ core/                         # Configuration & cross-cutting concerns
+│   │   ├ config.py                 #   Pydantic BaseSettings (all parameters)
+│   │   ├ exceptions.py             #   Domain exception hierarchy
+│   │   └ logging_config.py         #   Structured logging (loguru)
+│   ├ domain/                       # Business logic & model definition
+│   │   ├ unet.py                   #   UNet architecture (GroupNorm)
+│   │   ├ protocols.py              #   StorageClientProtocol (DI contract)
+│   │   ├ mask_utils.py             #   RGB mask decode/encode utilities
+│   │   ├ metrics.py                #   ValidationMetrics & EvaluationMetrics
+│   │   └ losses/                   #   Loss functions module
+│   │       ├ focal_loss.py         #     Focal Loss (hard example mining)
+│   │       ├ tversky_loss.py       #     Tversky Loss (Recall optimisation)
+│   │       ├ lovasz_loss.py        #     Lovász Hinge (direct IoU surrogate)
+│   │       └ combined_loss.py      #     Weighted combination of all three
+│   ├ infrastructure/               # Data loading & external integrations
+│   │   ├ google_drive_client.py    #   Async Google Drive wrapper
+│   │   ├ augmentations.py          #   Transform builders & augmentation strategies
+│   │   ├ segmentation_dataset.py   #   Local-file PyTorch Dataset
+│   │   └ streaming_dataset.py      #   Zero-disk streaming Dataset
+│   ├ service/                      # Application services (orchestration)
+│   │   ├ data_service.py           #   Dataset download & DataLoader creation
+│   │   ├ training_service.py       #   Training loop & model persistence
+│   │   ├ validation_service.py     #   Streaming validation & metric computation
+│   │   └ prediction_service.py     #   Single-image prediction
+│   └ visualization/                # Plotting helpers
+│       └ plotting.py               #   Matplotlib side-by-side panels
+├ scripts/                          # CLI scripts & utilities
+│   ├ run_training.py               #   Training CLI (also a sub-command)
+│   ├ run_validation.py             #   Validation CLI (also a sub-command)
+│   ├ run_evaluate.py               #   Evaluation CLI (also a sub-command)
+│   ├ check_label_validity.py       #   Validate label masks
+│   ├ debug_nan_batch.py            #   Inspect single batch for NaN/Inf
+│   └ visualize_copy_paste.py       #   Preview augmentations
+├ Dockerfile                        # CUDA 12.4 + Python 3.11
+├ docker-compose.yml                # GPU passthrough + hot-reload
+├ requirements.txt                  # Python dependencies
+└ docs/                             # Project documentation
+```
+
+---
+
+## Architecture
+
+The project follows a **layered architecture** with strict separation of concerns:
+
+```
+CLI (python -m app.main <command>)  →  Service Layer  →  Domain Layer  →  Infrastructure Layer
+```
+
+| Layer | Responsibility |
+|---|---|
+| **Core** | Configuration, exceptions, logging |
+| **Domain** | UNet model, loss functions, protocols, metrics, mask utilities |
+| **Service** | Training orchestration, data pipeline, validation, prediction |
+| **Infrastructure** | Datasets, Google Drive client, augmentations |
+
+**Key design patterns:**
+- **Dependency Inversion**: Services depend on `StorageClientProtocol`, not concrete implementations
+- **Single Responsibility**: Losses, augmentations, metrics, mask decoding are each in dedicated modules
+- **Composition over Inheritance**: Complex behaviour built from composable functions
+
+---
+
+## Quick Start
+
+### Docker (recommended)
+
+```bash
+docker compose build
+docker compose up -d
+docker exec -it unet-segmentation-pipeline bash
+
+# Inside the container:
+python -m app.main train --epochs 50 --lr 0.0005
+python -m app.main validate --device cuda
+python -m app.main evaluate --pred-dir output/validation_results --save-dir output/evaluation
+```
+
+### Local
+
+```bash
+pip install -r requirements.txt
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu124
+
+python -m app.main train
+python -m app.main validate
+python -m app.main evaluate --pred-dir output/validation_results
+```
+
+You can also invoke each script directly:
+
+```bash
+python scripts/run_training.py --epochs 50
+python scripts/run_validation.py --device cpu
+python scripts/run_evaluate.py --pred-dir output/validation_results
+```
+
+---
+
+## Configuration
+
+All parameters are configured via environment variables (prefix `UNET_`) or a `.env` file.
+See [app/core/config.py](app/core/config.py) for the full list with documentation.
+
+Key parameters:
+
+| Parameter | Default | Description |
+|---|---|---|
+| `UNET_DATA_MODE` | `local` | `local` or `online` (Google Drive streaming) |
+| `UNET_BATCH_SIZE` | `2` | Images per gradient update |
+| `UNET_LEARNING_RATE` | `0.001` | Adam optimiser LR |
+| `UNET_NUM_EPOCHS` | `20` | Training epochs |
+| `UNET_DEVICE` | `cuda` | `cuda`, `cpu`, or `auto` |
+| `UNET_ANTHILL_CONFIDENCE_THRESHOLD` | `0.40` | Minimum softmax probability for anthill class |
+| `UNET_USE_REGION_FILTER` | `true` | Enable connected-component size filtering |
+
+---
+
+## Loss Function
+
+The training uses a **triple-component loss**:
+
+$$\mathcal{L} = w_T \cdot \text{Tversky} + w_L \cdot \text{Lovász} + w_F \cdot \text{Focal}$$
+
+- **Focal Loss**: Anchors early training, down-weights easy examples
+- **Tversky Loss**: Explicitly optimises Recall ($\beta > \alpha$)
+- **Lovász Hinge**: Direct IoU surrogate for boundary precision
+
+---
+
+## Google Drive Structure
+
+```
+<root folder>/
 ├ treino/
 │   ├ rgb/
 │   └ labels/
@@ -31,176 +164,7 @@ As imagens são consumidas diretamente do Google Drive via streaming, sem downlo
 
 ---
 
-## Melhorias implementadas
+## License
 
-### Patch Training
+This project is open source. See [LICENSE](LICENSE) for details.
 
-- Patches de 256x256
-- Seleção baseada em presença mínima de formigueiros
-- Redução do desbalanceamento de classes
-
-### Métricas corrigidas
-
-- Máscaras RGB decodificadas corretamente
-- Pixels com valor 255 ignorados nas métricas
-- Cálculo correto de IoU e Dice
-
-### Treinamento otimizado
-
-- Salvamento do modelo baseado no melhor IoU
-- Não dependente apenas da função de perda
-
-### Inferência aprimorada
-
-- Separação entre threshold de segmentação e de detecção
-- Filtro de regiões para remoção de ruído
-
----
-
-## Configuração (.env)
-
-```env
-# Application 
-UNET_APP_NAME="UNet Segmentation Pipeline"
-UNET_DEBUG=false
-
-# Google Drive 
-UNET_GOOGLE_CREDENTIALS_PATH=credentials.json
-UNET_BASE_FOLDER_ID=<id-da-pasta>
-
-# Model 
-UNET_MODEL_SAVE_PATH=u_net.pth
-UNET_N_CHANNELS=3
-UNET_N_CLASSES=2
-
-# Training 
-UNET_BATCH_SIZE=2
-UNET_LEARNING_RATE=0.001
-UNET_NUM_EPOCHS=20
-UNET_NUM_WORKERS=2
-
-# Data 
-UNET_DATA_MODE=online
-UNET_LOCAL_DATA_DIR=data
-
-# Output
-UNET_ANTHILL_SAVE_THRESHOLD=40.0
-
-# Segmentation Threshold
-UNET_ANTHILL_CONFIDENCE_THRESHOLD=0.40
-
-# Region Filter
-UNET_USE_REGION_FILTER=true
-UNET_MIN_ANTHILL_REGION_PX=5
-UNET_MAX_ANTHILL_REGION_PX=5000
-```
-
----
-
-## Execução
-
-### 1. Build
-
-```bash
-docker compose build
-```
-
-### 2. Subir container
-
-```bash
-docker compose up -d
-```
-
-### 3. Acessar container
-
-```bash
-docker exec -it unet-segmentation-pipeline bash
-```
-
----
-
-## 4. Validação do dataset
-
-```bash
-python validate_dataset.py --local-dir ./data/
-```
-
-Valida:
-
-- Shape das imagens (3, 256, 256)
-- Normalização ImageNet
-- Distribuição de classes
-- Funcionamento do backward
-
----
-
-## 5. Treinamento
-
-```bash
-python run_training.py
-```
-
-O modelo:
-
-- Treina com patch training
-- Realiza validação por época
-- Salva o melhor modelo com base em IoU
-
----
-
-## 6. Validação do modelo
-
-```bash
-python run_validation.py
-```
-
-Saída:
-
-- Pixel Accuracy
-- Mean IoU
-- Mean Dice
-- Número de detecções
-
----
-
-## Métricas
-
-| Métrica           | Descrição                                        |
-| ----------------- | ------------------------------------------------ |
-| IoU               | Sobreposição entre predição e ground truth       |
-| Dice              | Similar ao IoU, mais sensível a regiões pequenas |
-| Pixel Accuracy    | Percentual de pixels corretamente classificados  |
-| Anthill Detection | Percentual de área classificada como formigueiro |
-
----
-
-## Observações
-
-- Pixel Accuracy pode ser inflada devido ao desbalanceamento de classes
-- As métricas mais relevantes são:
-  - IoU da classe formigueiro
-  - Dice
-
----
-
-## Resultados esperados
-
-Após as melhorias:
-
-```
-IoU (formigueiro): 0.45 – 0.60+
-Dice:              0.60 – 0.75+
-```
-
----
-
-## Arquitetura
-
-```
-app/
-├ core/
-├ domain/
-├ infrastructure/
-├ service/
-└ main.py
-```

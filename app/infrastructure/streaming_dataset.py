@@ -1,9 +1,8 @@
-"""In-memory streaming dataset for segmentation  zero local disk writes.
+"""In-memory streaming dataset for segmentation — zero local disk writes.
 
 Images and masks are downloaded on-demand via a synchronous callable
 (e.g. ``GoogleDriveClient._sync_download_file``) and immediately
 released from memory after the item has been consumed by the DataLoader.
-Nothing is ever written to disk.
 """
 
 from __future__ import annotations
@@ -13,10 +12,11 @@ from typing import Callable
 
 import numpy as np
 import torch
-import torchvision.transforms.functional as TF
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import v2 as transforms
+
+from app.domain.mask_utils import decode_rgb_mask_to_int64
 
 
 class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor, str]]):
@@ -81,22 +81,10 @@ class StreamingSegmentationDataset(Dataset[tuple[torch.Tensor, torch.Tensor, str
         if self._augmentations:
             image, mask = self._augmentations(image, mask)
 
-        # Normalise image to float32 with ImageNet stats  mask is NOT touched
+        # Normalise image to float32 with ImageNet stats
         image_tensor: torch.Tensor = self._normalize(image)
 
-        mask_arr = np.array(mask)  # (H, W, 3)
-        # Label convention (RGB masks):
-        #   Red   (R>150, G<100, B<100) → class 1 (anthill)
-        #   Black (all channels <  50) → class 0 (background)
-        #   White (all channels > 200) → ignore_index=255 (unlabelled)
-        r, g, b = mask_arr[:, :, 0], mask_arr[:, :, 1], mask_arr[:, :, 2]
-        is_anthill = (r > 150) & (g < 100) & (b < 100)
-        is_background = (r < 50) & (g < 50) & (b < 50)
-
-        label = np.full(mask_arr.shape[:2], 255, dtype=np.int64)  # default: ignore
-        label[is_background] = 0
-        label[is_anthill] = 1
-
+        label = decode_rgb_mask_to_int64(mask)
         mask_tensor = torch.tensor(label, dtype=torch.long)
 
         return image_tensor, mask_tensor, rgb_meta["name"]

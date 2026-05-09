@@ -5,27 +5,23 @@
 
 cat <<'EOF'
 ╔══════════════════════════════════════════════════════════════════╗
-║         UNet Segmentation Pipeline  available commands          ║
+║         UNet Segmentation Pipeline — available commands          ║
 ╠══════════════════════════════════════════════════════════════════╣
 ║                                                                  ║
-║  TRAIN (streams images, trains model, saves weights)             ║
-║              ║
-║  python -m app.main                                              ║
-║    → uses UNET_PIPELINE_MODE=train (default)                     ║
+║  TRAIN                                                           ║
+║  python -m app.main train [--epochs 50] [--lr 0.0005]            ║
 ║                                                                  ║
-║  VALIDATE (loads saved weights, streams val images,              ║
-║            saves anthill detections to validation_results/)      ║
-║              ║
-║  UNET_PIPELINE_MODE=validate python -m app.main                  ║
+║  VALIDATE                                                        ║
+║  python -m app.main validate [--device cpu] [--output-dir DIR]   ║
 ║                                                                  ║
-║  HOT-RELOAD (auto-restarts on code change  dev only)            ║
-║              ║
-║  watchfiles "python -m app.main" ./app                           ║
-║  UNET_PIPELINE_MODE=validate watchfiles "python -m app.main" ./app
+║  EVALUATE                                                        ║
+║  python -m app.main evaluate --pred-dir DIR [--save-dir DIR]     ║
 ║                                                                  ║
-║  Useful env-var overrides (prefix UNET_):                        ║
-║    UNET_NUM_EPOCHS=30  UNET_BATCH_SIZE=8  UNET_DEVICE=cpu        ║
-║    UNET_VALIDATION_OUTPUT_DIR=my_results                         ║
+║  HOT-RELOAD (dev only)                                           ║
+║  watchfiles "python -m app.main train" ./app                     ║
+║                                                                  ║
+║  Each sub-command accepts --help for a full list of flags.        ║
+║  All flags override UNET_* env-vars for the current run only.    ║
 ╚══════════════════════════════════════════════════════════════════╝
 
 EOF

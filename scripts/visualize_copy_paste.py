@@ -43,6 +43,7 @@ from PIL import Image
 # Ensure project root is importable
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from app.infrastructure.augmentations import apply_anthill_duplicate, apply_copy_paste
 from app.infrastructure.segmentation_dataset import SegmentationDataset
 from app.core.config import settings
 
@@ -142,7 +143,9 @@ def main() -> None:
         filename_prefix = "copy_paste"
 
         def apply_aug(rgb: Image.Image, mask: Image.Image) -> tuple[Image.Image, Image.Image]:
-            return dataset._apply_copy_paste(rgb, mask)
+            donor_idx = random.choice(dataset._positive_indices)
+            donor_rgb, donor_mask = dataset._load_pair(donor_idx)
+            return apply_copy_paste(rgb, mask, donor_rgb, donor_mask)
     else:  # anthill-duplicate
         candidate_indices = sorted(dataset._positive_indices)
         tile_kind = "positive"
@@ -151,7 +154,7 @@ def main() -> None:
         filename_prefix = "anthill_duplicate"
 
         def apply_aug(rgb: Image.Image, mask: Image.Image) -> tuple[Image.Image, Image.Image]:
-            return dataset._apply_anthill_duplicate(rgb, mask, args.max_copies)
+            return apply_anthill_duplicate(rgb, mask, args.max_copies)
 
     if not candidate_indices:
         print(f"ERROR: No {tile_kind} tiles found in the dataset.")

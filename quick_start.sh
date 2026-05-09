@@ -1,21 +1,11 @@
 #!/bin/bash
 
-echo "Iniciando..."
+echo "Starting quick training…"
 
-# Verifica ambiente
-python setup_training.py --check || exit 1
-
-# Valida dataset
-python validate_fixes.py || exit 1
-
-# Verifica dados
-python setup_training.py --check-dataset || exit 1
-
-# Treina modelo
-python train_with_monitoring.py \
+# Train with default settings (5 epochs, local data)
+python -m app.main train \
   --epochs 5 \
   --batch-size 4 \
-  --local-data \
-  --data-dir ./data/ || exit 1
+  --data-mode local || exit 1
 
-echo "Treinamento finalizado!"
+echo "Training complete!"

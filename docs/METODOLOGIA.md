@@ -46,12 +46,12 @@ Detecção de formigueiros em ortofotos aéreas via segmentação semântica com
 
 ```
 data/
-├── training/
-│   ├── rgb/rgb/          ← 9.862 imagens RGB (ortofotos recortadas em tiles)
-│   └── labels/labels/    ← 9.862 máscaras correspondentes (PNG com cores)
-└── validation/
-    ├── rgb/rgb/          ← 2.466 imagens RGB
-    └── labels/labels/    ← 2.466 máscaras
+├ training/
+│   ├ rgb/rgb/          ← 9.862 imagens RGB (ortofotos recortadas em tiles)
+│   └ labels/labels/    ← 9.862 máscaras correspondentes (PNG com cores)
+└ validation/
+    ├ rgb/rgb/          ← 2.466 imagens RGB
+    └ labels/labels/    ← 2.466 máscaras
 ```
 
 **Pareamento:** [app/infrastructure/segmentation_dataset.py](app/infrastructure/segmentation_dataset.py) faz o match exato pelo nome do arquivo (sem extensão), garantindo que cada RGB tenha sua máscara correspondente.
