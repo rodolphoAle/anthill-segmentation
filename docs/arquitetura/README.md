@@ -58,9 +58,6 @@ arquitetura/
 │   ├── prediction-service.md
 │   └── training-service.md
 │
-├── domain/ (histórico)
-├── infrastructure/ (histórico)
-└── service/ (histórico)
 ```
 
 ---
