@@ -1,8 +1,7 @@
-"""Structural typing contracts (Protocols) consumed by the service layer.
+"""Contratos usados pela camada de serviço.
 
-Following the **Interface Segregation** and **Dependency Inversion**
-principles, high-level services depend on these thin protocols  never
-on concrete infrastructure classes.
+Os serviços dependem deste protocolo, e não de uma implementação
+concreta como Google Drive ou armazenamento local.
 """
 
 from __future__ import annotations
@@ -13,14 +12,14 @@ from typing import Protocol, runtime_checkable
 
 @runtime_checkable
 class StorageClientProtocol(Protocol):
-    """Async cloud / local storage operations."""
+    "Contrato para operações assíncronas de armazenamento."
 
     async def get_folder_id(
         self,
         folder_name: str,
         parent_id: str | None = None,
     ) -> str | None:
-        """Return the folder identifier for *folder_name*, or ``None``."""
+        """Busca o ID de uma pasta pelo nome."""
         ...
 
     async def list_files(
@@ -28,7 +27,7 @@ class StorageClientProtocol(Protocol):
         folder_id: str,
         extensions: list[str] | None = None,
     ) -> list[dict[str, str]]:
-        """List files inside *folder_id*, optionally filtered by extension."""
+        "Lista arquivos de uma pasta, com filtro opcional por extensão."
         ...
 
     async def download_file(
@@ -36,9 +35,5 @@ class StorageClientProtocol(Protocol):
         file_id: str,
         destination_path: str | None = None,
     ) -> io.BytesIO | str:
-        """Download a file by *file_id*.
-
-        When *destination_path* is provided the file is written to disk and
-        the path is returned; otherwise an in-memory ``BytesIO`` is returned.
-        """
+        "Baixa um arquivo para memória ou para o disco."
         ...

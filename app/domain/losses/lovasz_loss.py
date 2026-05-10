@@ -1,12 +1,14 @@
-"""Binary Lovász Hinge Loss — direct surrogate for IoU (Jaccard index).
+"""Lovász Hinge Loss para segmentação binária.
 
-Standard segmentation losses (CE, Focal, Tversky) optimise per-pixel
-classification and only improve IoU as a side-effect.  Lovász Hinge is a
-*piecewise-linear convex surrogate* of the Jaccard loss on the simplex of
-foreground errors (Berman et al., CVPR 2018).
+Objetivo:
+Otimizar diretamente a métrica IoU (Intersection over Union),
+muito utilizada em segmentação semântica.
 
-For 2-class segmentation the logit input is converted to a single-channel
-margin: ``logit_anthill - logit_background``.
+Diferente da CrossEntropy e Focal Loss,
+a Lovász atua diretamente sobre os erros relacionados ao IoU.
+
+Para segmentação binária:
+    margin = logit_formigueiro - logit_fundo
 """
 
 from __future__ import annotations
@@ -17,41 +19,84 @@ import torch.nn.functional as F
 
 
 class LovaszHingeLoss(nn.Module):
-    """Binary Lovász Hinge Loss for semantic segmentation.
-
-    Args:
-        ignore_index: Label value excluded from the loss (e.g. ``255``).
-    """
+    "Implementação da Lovász Hinge Loss."
 
     def __init__(self, ignore_index: int = 255) -> None:
         super().__init__()
+
+        # Pixels ignorados no cálculo da loss.
         self.ignore_index = ignore_index
 
     @staticmethod
     def _lovasz_grad(gt_sorted: torch.Tensor) -> torch.Tensor:
-        """Gradient of the Lovász extension w.r.t. sorted errors."""
+        "Calcula gradiente da extensão Lovász."
+
+        # Quantidade de elementos válidos.
         p = gt_sorted.numel()
+
+        # Total de pixels positivos.
         gts = gt_sorted.sum()
+
+        # Interseção acumulada.
         intersection = gts - gt_sorted.cumsum(0)
+
+        # União acumulada.
         union = gts + (1.0 - gt_sorted).cumsum(0)
+
+        # Aproximação do erro IoU/Jaccard.
         jaccard = 1.0 - intersection / union
+
+        # Ajuste incremental do gradiente.
         if p > 1:
-            jaccard[1:p] = jaccard[1:p].clone() - jaccard[0:-1].clone()
+            jaccard[1:p] = (
+                jaccard[1:p].clone()
+                - jaccard[0:-1].clone()
+            )
+
         return jaccard
 
-    def forward(self, inputs: torch.Tensor, targets: torch.Tensor) -> torch.Tensor:
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        targets: torch.Tensor
+    ) -> torch.Tensor:
+        "Calcula Lovász Hinge Loss."
+
+        # Converte logits binários em margem.
         margin = inputs[:, 1] - inputs[:, 0]
 
+        # Remove pixels ignorados.
         valid = targets != self.ignore_index
+
         margin_v = margin[valid]
+
+        # Converte alvo para binário.
         target_v = (targets[valid] == 1).float()
 
+        # Evita erro caso não existam pixels válidos.
         if margin_v.numel() == 0:
             return inputs.sum() * 0.0
 
+        # Define sinal correto da classificação.
         signs = 2.0 * target_v - 1.0
+
+        # Calcula erro da margem.
         errors = 1.0 - margin_v * signs
-        errors_sorted, perm = torch.sort(errors, descending=True)
+
+        # Ordena erros do maior para o menor.
+        errors_sorted, perm = torch.sort(
+            errors,
+            descending=True
+        )
+
+        # Reordena targets.
         gt_sorted = target_v[perm]
+
+        # Calcula gradiente Lovász.
         grad = self._lovasz_grad(gt_sorted)
-        return torch.dot(F.relu(errors_sorted), grad)
+
+        # Calcula loss final.
+        return torch.dot(
+            F.relu(errors_sorted),
+            grad
+        )
