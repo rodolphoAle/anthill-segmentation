@@ -73,8 +73,6 @@ arquitetura/
 2. Leia todos os 9 ADRs (10-15 min cada)
 3. Consulte technical docs conforme necessário para detalhar implementação
 
-**Resultado**: Demonstra engenharia de software profissional com rastreabilidade.
-
 ### Para Desenvolvimento
 
 1. Consulte ADRs para entender contexto e justificativa
@@ -152,7 +150,6 @@ Esta estrutura segue **padrões industriais** de:
 - Machine Learning Documentation
 - Professional Technical Writing
 
-Demonstra maturidade técnica apropriada para avaliação academica.
 
 ---
 
