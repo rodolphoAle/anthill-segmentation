@@ -144,17 +144,6 @@ technical/combined-loss.md (detalhe técnico)
 
 ---
 
-##  Checklist para Apresentação
-
-- [ ] Leu ADRs README para entender formato
-- [ ] Leu todos os 9 ADRs
-- [ ] Entendeu decisões e justificativas de cada
-- [ ] Consultou documentação técnica conforme necessário
-- [ ] Pronto para discussão sobre decisões e trade-offs
-- [ ] Documentação está profissional e bem organizada
-
----
-
 ##  Padrão Utilizado
 
 Esta estrutura segue **padrões industriais** de:
