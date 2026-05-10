@@ -16,9 +16,9 @@ Após inferência, o modelo gera máscaras binárias com alguns ruídos:
 
 Testes iniciais mostravam:
 
-- ❌ Muitos falsos positivos pequenos;
-- ❌ Artefatos de bordas;
-- ❌ Diminuição de precisão.
+-  Muitos falsos positivos pequenos;
+-  Artefatos de bordas;
+-  Diminuição de precisão.
 
 Removê-los manualmente é impraticável, necessitando **filtro automático**.
 
@@ -72,11 +72,11 @@ def filter_regions(mask):
 
 ### Negativas
 
-❌ **Pode remover formigueiros pequenos**: Se MIN muito alto
+ **Pode remover formigueiros pequenos**: Se MIN muito alto
 
-❌ **Requer calibração**: Depende de características do dataset
+ **Requer calibração**: Depende de características do dataset
 
-❌ **Híper-realista**: Pode parecer "trucagem" se desajustado
+ **Híper-realista**: Pode parecer "trucagem" se desajustado
 
 ---
 

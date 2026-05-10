@@ -16,10 +16,10 @@ Treinamento de rede neural é computacionalmente intensivo:
 
 Se executado na thread principal:
 
-- ❌ API fica travada;
-- ❌ Usuário não consegue consultar estado;
-- ❌ Impossível processar outras requisições;
-- ❌ Experiência ruim em produção.
+-  API fica travada;
+-  Usuário não consegue consultar estado;
+-  Impossível processar outras requisições;
+-  Experiência ruim em produção.
 
 Necessário: **desacoplar treinamento da API**.
 
@@ -84,11 +84,11 @@ Retorna ao evento loop
 
 ### Negativas
 
-❌ **Complexidade**: Code mais complexo com async/await
+ **Complexidade**: Code mais complexo com async/await
 
-❌ **Sincronização**: State management requer cuidado
+ **Sincronização**: State management requer cuidado
 
-❌ **Debugging**: Mais difícil debugar code assíncrono
+ **Debugging**: Mais difícil debugar code assíncrono
 
 ---
 

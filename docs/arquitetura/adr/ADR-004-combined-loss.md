@@ -72,13 +72,13 @@ Garante que soma sempre = 1.0 e focal_weight sempre ≥ 0.
 
 ### Negativas
 
-❌ **Complexidade**: Mais hiperparâmetros para ajustar
+ **Complexidade**: Mais hiperparâmetros para ajustar
 
-❌ **Custo computacional**: Cálculo de 3 losses simultaneamente
+ **Custo computacional**: Cálculo de 3 losses simultaneamente
 
-❌ **Sensibilidade**: Pequenas mudanças nos pesos afetam significativamente resultado
+ **Sensibilidade**: Pequenas mudanças nos pesos afetam significativamente resultado
 
-❌ **Necessidade de tuning**: Requer experimentação para novo dataset
+ **Necessidade de tuning**: Requer experimentação para novo dataset
 
 ---
 

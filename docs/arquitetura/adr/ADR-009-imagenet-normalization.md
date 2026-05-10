@@ -23,9 +23,9 @@ Esta normalização é padrão de facto em visão computacional:
 
 Usar normalização diferente:
 
-- ❌ Incompatível com modelos pré-treinados
-- ❌ Requer re-treinamento completo
-- ❌ Desalinha com benchmark da comunidade
+-  Incompatível com modelos pré-treinados
+-  Requer re-treinamento completo
+-  Desalinha com benchmark da comunidade
 
 ---
 
@@ -67,9 +67,9 @@ transforms.Normalize(
 
 ### Negativas
 
-❌ **Possível desalinhamento**: Se dados diferem significativamente de ImageNet
+ **Possível desalinhamento**: Se dados diferem significativamente de ImageNet
 
-❌ **Falta de exploração**: Normalização customizada poderia ser melhor
+ **Falta de exploração**: Normalização customizada poderia ser melhor
 
 ---
 

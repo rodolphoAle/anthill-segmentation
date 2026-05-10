@@ -65,11 +65,11 @@ Como `β > α`:
 
 ### Negativas
 
-❌ **Menos ênfase em precisão**: Falsos positivos podem aumentar
+ **Menos ênfase em precisão**: Falsos positivos podem aumentar
 
-❌ **Requer calibração de α e β**: Ajuste fino necessário
+ **Requer calibração de α e β**: Ajuste fino necessário
 
-❌ **Sensível ao desbalanceamento**: Precisa ser combinada com outras losses
+ **Sensível ao desbalanceamento**: Precisa ser combinada com outras losses
 
 ---
 

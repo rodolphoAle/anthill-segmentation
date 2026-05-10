@@ -76,11 +76,11 @@ Output (512x512x2)
 
 ### Negativas
 
-❌ **Menos sofisticada**: Modelos recentes (Transformers) podem ser melhores
+ **Menos sofisticada**: Modelos recentes (Transformers) podem ser melhores
 
-❌ **Dependência de dados**: Requer quantidade razoável de dados
+ **Dependência de dados**: Requer quantidade razoável de dados
 
-❌ **Sem atenção**: Não tem mecanismos de atenção
+ **Sem atenção**: Não tem mecanismos de atenção
 
 ---
 

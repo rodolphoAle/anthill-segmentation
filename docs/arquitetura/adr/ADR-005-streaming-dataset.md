@@ -18,9 +18,9 @@ O dataset de treinamento possui:
 
 Carregamento tradicional (dataset completo em disco):
 
-- ❌ Consome muito espaço;
-- ❌ Dificulta testes de novo dataset;
-- ❌ Não é escalável para produção.
+-  Consome muito espaço;
+-  Dificulta testes de novo dataset;
+-  Não é escalável para produção.
 
 ---
 
@@ -72,13 +72,13 @@ retorna ao DataLoader
 
 ### Negativas
 
-❌ **Dependência de rede**: Requer conexão estável
+ **Dependência de rede**: Requer conexão estável
 
-❌ **Latência**: Primeira leitura lenta (download + processamento)
+ **Latência**: Primeira leitura lenta (download + processamento)
 
-❌ **Custo de banda**: Downloads repetidos podem ser caros
+ **Custo de banda**: Downloads repetidos podem ser caros
 
-❌ **Complexidade**: Mais código que dataset local
+ **Complexidade**: Mais código que dataset local
 
 ---
 
