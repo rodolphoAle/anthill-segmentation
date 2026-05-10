@@ -64,7 +64,7 @@ arquitetura/
 
 ##  Guia de Leitura Recomendado
 
-### Para Apresentação ao Professor
+### Consulta para o Professor
 
 1. Leia [ADRs README](adr/README.md) para entender formato
 2. Leia todos os 9 ADRs (10-15 min cada)
