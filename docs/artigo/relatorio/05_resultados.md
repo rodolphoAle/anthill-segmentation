@@ -174,7 +174,7 @@ LOSS VALIDATION
 ### Distribuição de Erros no Run 10
 
 **Por Imagem (593 GT positivas):**
-- ✅ **Detectadas corretamente:** 505 (85.2%)
+-  **Detectadas corretamente:** 505 (85.2%)
 - ❌ **Não detectadas (FN):** 88 (14.8%)
 - ⚠️ **Falsos alarmes (FP):** 105 em 1.873 negativas (5.6%)
 
@@ -218,11 +218,11 @@ LOSS VALIDATION
 
 | Meta                    | Alvo   | Resultado | Status |
 | ----------------------- | ------ | --------- | ------ |
-| F1 Score               | ≥ 80%  | 84.0%     | ✅     |
-| Recall (detecção)      | ≥ 80%  | 85.2%     | ✅     |
-| Precision (alarmes)    | ≥ 75%  | 82.8%     | ✅     |
+| F1 Score               | ≥ 80%  | 84.0%     |      |
+| Recall (detecção)      | ≥ 80%  | 85.2%     |      |
+| Precision (alarmes)    | ≥ 75%  | 82.8%     |      |
 | IoU de formigueiro     | ≥ 35%  | 30.3%     | ❌ (4.7pp abaixo) |
-| Pixel Accuracy         | ≥ 95%  | 98.8%     | ✅     |
+| Pixel Accuracy         | ≥ 95%  | 98.8%     |      |
 
 ### Insights Principais
 
@@ -239,10 +239,10 @@ LOSS VALIDATION
 ### Recomendação Final
 
 **Use Run 10 para produção**, pois oferece:
-- ✅ Melhor F1 entre runs com augmentações realistas (84.0%)
-- ✅ Recall máximo (85.2%) — reduz risco de perder formigueiros reais
-- ✅ Precision aceitável (82.8%) — controla falsos alarmes
-- ✅ Treinamento estável com CosineAnnealingLR
+-  Melhor F1 entre runs com augmentações realistas (84.0%)
+-  Recall máximo (85.2%) — reduz risco de perder formigueiros reais
+-  Precision aceitável (82.8%) — controla falsos alarmes
+-  Treinamento estável com CosineAnnealingLR
 
 Para aplicações que priorizam **mínimos falsos alarmes** (e.g., controle químico automático em talhões pequenos), considere **Run 05** apesar de Recall 1.7pp menor, pela melhor qualidade de segmentação (IoU=35.2% vs 30.3%).
 

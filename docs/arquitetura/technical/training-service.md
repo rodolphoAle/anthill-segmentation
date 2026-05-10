@@ -342,9 +342,9 @@ Ele garante:
 
 ---
 
-# Resumo
+# Resumo para Apresentação
 
-O `training_service.py` centraliza todo o treinamento da U-Net.
+O `TrainingService` centraliza todo o treinamento da U-Net.
 
 Ele executa:
 

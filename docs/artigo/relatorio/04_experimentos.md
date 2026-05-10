@@ -865,7 +865,7 @@ python run_validation.py --weights best_model_params_run5.pth --output-dir outpu
 python run_evaluate.py --pred-dir output/validation_run5_t04 --save-dir output/evaluation_run5_t04
 ```
 **Expectativa:** Recall 88-92%, Precision cai para 75-80%  
-**Critério de sucesso:** Se Recall ≥ 90%, **PARAR AQUI** ✅
+**Critério de sucesso:** Se Recall ≥ 90%, **PARAR AQUI** 
 
 #### 1B. Testar Run 05 com min_region_px=50 (metade do atual)
 ```bash
