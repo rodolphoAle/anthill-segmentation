@@ -79,7 +79,7 @@ Predominância da classe fundo no dataset.
 
 Aplicação de Patch Training:
 
-- Extração de patches (512×512)
+- Extração de patches (256×256)
 - Priorização de regiões com formigueiros
 
 ## 5. Patches sem informação relevante

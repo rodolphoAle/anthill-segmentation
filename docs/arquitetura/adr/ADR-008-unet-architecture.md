@@ -39,7 +39,7 @@ Foi adotada **U-Net** como arquitetura principal de segmentação.
 ### Arquitetura
 
 ```
-Input (512x512x3)
+Input (256x256x3)
     ↓
 Encoder (downsampling)
     ↓
@@ -47,7 +47,7 @@ Bottleneck
     ↓
 Decoder (upsampling + skip connections)
     ↓
-Output (512x512x2)
+Output (256x256x2)
 ```
 
 ### Características da Implementação
@@ -109,8 +109,8 @@ unet = UNet(
 
 ### Configuração Recomendada
 
-- **Entrada**: 512x512x3 (RGB)
-- **Saída**: 512x512x2 (logits para 2 classes)
+- **Entrada**: 256x256x3 (RGB)
+- **Saída**: 256x256x2 (logits para 2 classes)
 - **Profundidade**: 4 (balance entre receptive field e memória)
 - **Features iniciais**: 64 (escalável para datasets maiores)
 
