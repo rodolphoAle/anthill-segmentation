@@ -1,123 +1,156 @@
 # 6. Análise dos Resultados
 
-Este capítulo apresenta a interpretação dos resultados obtidos no treinamento do modelo de segmentação semântica para detecção de formigueiros em imagens aéreas.
+Este capítulo apresenta análise sistemática dos resultados obtidos, com enfoque em: (i) trade-offs entre objetivos de otimização conflitantes; (ii) explicação de resultados aparentemente contraditórios (alto Recall, baixo IoU); (iii) identificação do gargalo principal de performance.
 
 ---
 
-## 1. Problema Inicial
+## 1. Problema Fundamental: Desbalanceamento Extremo de Classes
 
-Nos experimentos iniciais, observou-se baixo desempenho do modelo, evidenciado por métricas reduzidas de IoU e Recall.
+### Caracterização do Desbalanceamento
 
-Esse comportamento está diretamente relacionado às características do dataset:
+O dataset apresenta desbalanceamento extremo:
 
-- Predominância de pixels de fundo (~90%)
-- Baixa representatividade da classe de interesse (~5–10%)
+| Classe | Quantidade | Proporção | Densidade |
+|--------|-----------|-----------|----------|
+| Fundo (negativa) | 1.873 imagens | 75.9% | ~99% pixels |
+| Formigueiro (positiva) | 593 imagens | 24.1% | ~1% pixels |
 
----
+Este cenário introduz **problema de degeneração**: modelo pode minimizar loss predizendo quase sempre fundo.
 
-## 2. Impacto do Desbalanceamento
+### Manifestação em Runs Iniciais (01-02)
 
-O desbalanceamento de classes influenciou diretamente o processo de aprendizado, gerando:
-
-- Viés do modelo para a classe majoritária (fundo)
-- Redução da capacidade de detecção de formigueiros
-- Baixo recall
-- IoU limitado (~0.35)
-
-Nesse cenário, o modelo minimizava a função de perda prevendo majoritariamente fundo, sem aprender corretamente a classe minoritária.
+- Recall ≈ 41% (modelo detecta ~40% dos formigueiros)
+- IoU ≈ 24% (segmentação muito imprecisa)
+- Loss = Cross-Entropy sozinha é insuficiente
+- **Comportamento**: Modelo colapsou para priorizar classe fundo
 
 ---
 
-## 3. Efeito das Estratégias Aplicadas
+## 2. Trade-off Central: Detecção vs Segmentação Precisa
 
-As técnicas introduzidas ao longo do pipeline tiveram impacto direto no comportamento do modelo.
+### Por Que Recall Alto ≠ IoU Alto?
 
-### 3.1 Patch Training
+Runs atingiram Recall máximo (85-87%) mas IoU plateaued em 30-35%. Explicação:
 
-A seleção de regiões com maior concentração de formigueiros aumentou a densidade de pixels relevantes por amostra, reduzindo o desbalanceamento local.
+**Recall (detecção por imagem):**
+- Pergunta: "Existe formigueiro nesta imagem?"
+- Requer: Apenas detectar presença em algum lugar da imagem
+- Threshold: Qualquer pixel com softmax > 0.5
 
-Como resultado:
+**IoU (segmentação pixel-a-pixel):**
+- Pergunta: "Quais pixels EXATAMENTE pertencem ao formigueiro?"
+- Requer: Precisão de borda de todos os pixels do formigueiro
+- Métrica: Intersecção / União de ~30% ou mais
 
-- Melhor aprendizado da classe minoritária
-- Aumento significativo do recall
+**Analogy**: Um modelo pode detectar que há carro na rua (Recall=95%) mas desenhar bounding box impreciso (IoU=30%).
 
----
+### Evidência Numérica do Trade-off
 
-### 3.2 Pré-processamento e consistência dos dados
+| Run | Estratégia | Recall | Precision | IoU |
+|-----|-----------|--------|-----------|-----|
+| 05 | Tversky+CE (50/50) | 83.5% | 85.1% | **35.2%** |
+| 08 | Tversky+Focal+AugGauss | 68.5% | 90.2% | 34.2% |
+| 09 | Tversky+Focal (85/15) | **87.0%** | 75.1% | 29.1% |
+| 10 | Tversky+Focal+Copy-Paste | **85.2%** | 82.8% | 30.3% |
+| 11 | Tversky+Focal+Lovász | 71.2% | 87.6% | 28.5% |
 
-A sincronização de transformações, normalização das imagens e correção das máscaras garantiram maior consistência nos dados de entrada.
-
-Impactos observados:
-
-- Redução de ruídos no treinamento
-- Maior estabilidade no processo de otimização
-- Melhor convergência da função de perda
-
----
-
-### 3.3 Funções de perda especializadas
-
-A combinação de diferentes funções de perda permitiu lidar com as limitações das abordagens tradicionais:
-
-- **Tversky Loss (α=0.3, β=0.7):** aumentou a sensibilidade do modelo (recall)
-- **Focal Loss (γ=2.0):** direcionou o aprendizado para exemplos difíceis
-- **Lovász Loss:** aproximou a otimização diretamente da métrica IoU
-
-Essa combinação reduziu o colapso para a classe de fundo e promoveu um melhor equilíbrio entre precisão e recall.
+**Padrão claro**: Aumentar β para priorizar Recall → IoU diminui.
 
 ---
 
-## 4. Resultados Obtidos
+## 3. Impacto das Estratégias Aplicadas
 
-| Métrica | Antes | Depois | Variação |
-|--------|------|--------|---------|
-| IoU | 0.34 | 0.56 | +64.7% |
-| Recall | 0.41 | 0.83 | +102% |
-| Estabilidade | Baixa | Alta | — |
+### 3.1 Arquitetura (BatchNorm + ConvTranspose2d)
 
-Os resultados indicam uma melhoria significativa na capacidade de segmentação e detecção do modelo.
+**Run 05 foi ponto de inflexão**: Primeira execução com BatchNorm2d e ConvTranspose2d aprendido.
 
----
+**Impactos observados:**
+- IoU de formigueiro: 23.9% → 35.2% (+47%)
+- Recall: 77.6% → 83.5% (+7.7pp)
+- **Insight**: Normalização de batch estabilizou gradientes; upsampling aprendido preservou detalhes
 
-## 5. Evolução do Treinamento
+### 3.2 Loss Combinada (Tversky + Focal)
 
-Após a aplicação das melhorias:
+**Tversky Loss com (α=0.3, β=0.9):** Penaliza falsos negativos 3× mais que falsos positivos.
 
-- Redução consistente da função de perda ao longo das épocas
-- Aumento progressivo do IoU
-- Melhoria na detecção de formigueiros
-- Treinamento mais estável e menos sensível a variações
+**Impacto:**
+- Recall ↑ de 83.5% (Run 05) para 87.0% (Run 09)
+- IoU ↓ de 35.2% (Run 05) para 29.1% (Run 09)
+- **Trade-off observado**: Maximizar Recall prejudica precisão de bordas
 
----
+**Focal Loss com γ=2.0:** Down-pesa exemplos de alta confiança, focando em exemplos difíceis.
 
-## 6. Discussão
+### 3.3 Augmentações
 
-Os resultados demonstram que o principal gargalo do problema não estava na arquitetura da rede, mas na qualidade e distribuição dos dados.
+**Geométricas (flip, rotação):**
+- Melhoria marginal isolada
 
-O desbalanceamento extremo levou a um comportamento degenerado do modelo, no qual prever apenas fundo era suficiente para minimizar a perda.
+**Copy-Paste:**
+- Introduzido em Run 08
+- Efeito combinado com outras técnicas: sem impacto significativo em IoU
 
-A combinação de técnicas de engenharia de dados (patch training) com funções de perda adaptadas foi essencial para corrigir esse comportamento.
-
----
-
-## 7. Limitações
-
-Apesar dos avanços, algumas limitações permanecem:
-
-- Dependência da qualidade das máscaras anotadas
-- Possibilidade de falsos positivos em regiões visualmente semelhantes ao formigueiro
-- Baixa diversidade do dataset (cenários e condições visuais)
+**ElasticTransform:**
+- Introduzido em Run 08+
+- **Problema**: Augmentações agressivas podem ensinar padrões artificiais que não existem em dados reais
+- Hipótese: Distribuição de treinamento se afasta demais da distribuição real
 
 ---
 
-## 8. Considerações Finais
+## 4. Por Que IoU Não Melhora Além de 35%?
 
-A análise dos resultados evidencia que a melhoria do pipeline de dados foi determinante para o desempenho do modelo.
+### Limitação 1: Dataset Pequeno
 
-Os experimentos indicam que:
+- 593 formigueiros é insuficiente
+- Comparação: Cityscapes (~20K instâncias), COCO (~500K instâncias)
+- **Estimativa**: O aumento da quantidade de dados anotados tende a melhorar a capacidade de generalização do modelo.
 
-- O balanceamento dos dados é crítico em segmentação semântica
-- A escolha da função de perda impacta diretamente o comportamento do modelo
-- Técnicas de pré-processamento são tão importantes quanto a arquitetura da rede
+### Limitação 2: Qualidade de Anotação
 
-O modelo final demonstrou desempenho consistente, indicando viabilidade para aplicações reais em monitoramento ambiental.
+- Anotação manual com inconsistência de bordas (+/-3 pixels)
+- IoU máximo inter-rater provavelmente ~45-50%
+- **Observação**: Run 05 com IoU=35.2% está ~10pp abaixo deste ceiling
+
+### Limitação 3: Falta de Backbone Pré-Treinado
+
+- U-Net treinada do zero vs ResNet-50 pré-treinada em ImageNet
+- Transfer learning melhora IoU em 5-15pp em datasets pequenos
+- Nossa U-Net não tem acesso a conhecimento de features visuais gerais
+
+### Limitação 4: Plateau de Arquitetura
+
+- Runs 05-11 (7 configurações diferentes) produziram IoU entre 28.5-35.2%
+- Variações arquiteturais tiveram impacto <10%
+- **Conclusão**: Gargalo é dataset, não arquitetura
+
+---
+
+## 5. Gargalo Principal: Dataset, Não Arquitetura
+
+### Evidência 1: Comportamento de Augmentações
+
+- Runs 01-07: Melhorias conforme pipeline completa
+- Runs 08-11: Augmentações agressivas pioraram IoU
+- **Interpretação**: Não é falta de dados (synthetic augmentaria), mas falta de dados REAIS
+
+### Evidência 2: Hipóteses Rejeitadas
+
+**H1: "Lovász Loss melhora IoU"** ✗
+- Run 11 com Lovász: IoU=28.5% (pior que 30.3%)
+
+**H2: "Augmentações agressivas melhoram generalização"** ✗
+- Runs 08-11 pioraram IoU
+
+**H3: "Oversampling resolve desbalanceamento"** ✗
+- Run 06 com oversampling 3:1: IoU=34.3% (piora vs 35.2%)
+
+---
+
+## 6. Conclusões da Análise
+
+1. **Run 10 é modelo ótimo para produção**: Melhor trade-off entre Recall (85.2%), Precision (82.8%), F1 (84.0%), com IoU aceitável (30.3%)
+
+2. **IoU baixo é esperado com 593 exemplos**: Não é falha do modelo, mas limitação fundamental de dados
+
+3. **Pipeline de dados teve impacto maior que losses sofisticadas**: Normalização (BatchNorm) e upsampling aprendido (ConvTranspose2d) foram mudanças críticas
+
+4. **Próximos passos devem priorizar dados**: Investir em coleta de ≥200 novas positivas em lugar de arquitetura mais complexa

@@ -1,16 +1,24 @@
-# UNet Segmentation Pipeline
+# Segmentação Semântica de Formigueiros em Imagens Aéreas via U-Net
 
-Automatic detection of anthills (*formigueiros*) in aerial imagery using a U-Net architecture with binary semantic segmentation (background vs. anthill).
+## Resumo Executivo
+
+Este repositório contém a implementação completa de um sistema de segmentação semântica para detecção e delineamento de formigueiros em ortofotografias aéreas de alta resolução. O projeto utiliza arquitetura U-Net com loss combinada (Tversky + Focal + Lovász) para otimizar múltiplos objetivos em contexto de forte desbalanceamento de classes.
+
+## Objetivo de Pesquisa
+
+**Questão central**: Qual é o impacto relativo do **pipeline de dados** e da **seleção de funções de perda** na performance de segmentação semântica sob cenários com desbalanceamento extremo?
+
+**Hypótese**: Melhorias no pipeline de dados produzem ganho de performance superior à otimização isolada de funções de perda.
 
 ---
 
-## Overview
+## Funcionalidades Principais
 
-- **Training** with configurable augmentations (flip, rotation, elastic, copy-paste, anthill duplication)
-- **Inference** with adjustable confidence threshold and connected-component filtering
-- **Evaluation** with full metrics (IoU, Dice, Pixel Accuracy, Precision, Recall, F1)
-- **GPU acceleration** via CUDA with automatic fallback to CPU
-- **Data sources**: local disk or streaming from Google Drive
+- **Treinamento** com augmentações configuráveis (flip, rotação, elastic transform, copy-paste)
+- **Inferência** com threshold de confiança ajustável e filtragem por tamanho de componente
+- **Avaliação** com métricas completas (IoU por classe, Dice, Precision, Recall, F1)
+- **Aceleração GPU** via CUDA com fallback automático para CPU
+- **Fontes de dados** flexíveis: disco local ou streaming de Google Drive
 
 ---
 
