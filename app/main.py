@@ -137,9 +137,6 @@ async def pipeline_main() -> None:
         await _run_train(data_service, training_service)
 
 
-#  Unified CLI 
-
-
 def cli() -> None:
     """Build the unified CLI with ``train``, ``validate``, and ``evaluate``
     sub-commands and dispatch to the appropriate runner."""
@@ -169,20 +166,14 @@ def cli() -> None:
     }
     dispatch[args.command](args)
 
-
-#  Entry points 
-
-# Keep backward-compat alias so old ``from app.main import main`` still works.
 main = pipeline_main
 
 if __name__ == "__main__":
-    # If called with sub-commands → unified CLI
-    # If called without args → legacy env-var dispatch
+
     if len(sys.argv) > 1 and sys.argv[1] in ("train", "validate", "evaluate", "validate-dataset"):
         cli()
     else:
         asyncio.run(pipeline_main())
-
 
 if __name__ == "__main__":
     asyncio.run(main())
