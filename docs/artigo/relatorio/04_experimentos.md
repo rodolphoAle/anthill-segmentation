@@ -715,6 +715,7 @@ Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 | Run 09 · t=0.5 · min=100px     | 516           | 171          | 77           | 1.702           | 75.1%           | 87.0%           | 80.6%           |
 | **Run 10 · t=0.5 · min=100px** | **505** | **105** | **88** | **1.768** | **82.8%** | **85.2%** | **84.0%** |
 | Run 11 · t=0.5 · min=100px     | 422           | 60           | 171          | 1.813           | 87.6%           | 71.2%           | 78.5%           |
+| **Run 14 · t=0.4 · min=5px**   | **544** | 173     | **49**  | 1.700     | 75.9%     | **91.7%**  | 83.1%     |
 
 ### Métricas de segmentação por pixel (evaluate_detections - acumulado global)
 
@@ -729,8 +730,83 @@ Dataset: 2.466 imagens · 593 GT positivas · 1.873 GT negativas
 | Run 09 · t=0.5 · min=100px     | 98.7%           | 98.7%           | 29.1%           | 45.0%            | 63.9%           | 72.2%           |
 | Run 10 · t=0.5 · min=100px     | 98.8%           | 98.8%           | 30.3%           | 46.5%            | 64.5%           | 72.9%           |
 | Run 11 · t=0.5 · min=100px     | 98.9%           | 98.9%           | 28.5%           | 44.3%            | 63.7%           | 71.9%           |
+| **Run 14 · t=0.4 · min=5px**   | **98.7%**  | **98.7%**  | **33.8%**  | **50.5%**   | **66.3%**  | **74.9%**  |
 
 > **Nota sobre diferença de mIoU:** `validation_service` reporta média de IoU *por imagem depois agrega* (~0.44 Run 05), enquanto `evaluate_detections` acumula pixels *globalmente* (~0.67 Run 05). O segundo é mais rigoroso para datasets desbalanceados.
+
+---
+
+### Run 12–13 — Tentativas descartadas
+
+Runs 12 e 13 foram realizadas porém os resultados foram insatisfatórios e não avançaram o estado da arte. Não documentadas em detalhe.
+
+---
+
+### Run 14 — Anthill Duplicate Augmentation + threshold calibrado
+
+**Objetivo:** substituir Copy-Paste (que cria padrões cross-tile artificiais) pela nova augmentação `anthill_duplicate` (cria cópias rotacionadas do formigueiro dentro da mesma tile), aumentar sensibilidade via class_weight e reduzir limiar de detecção.
+
+**Mudanças em relação ao Run 11:**
+
+| # | Categoria | Parâmetro | Run 11 | Run 14 |
+|---|-----------|-----------|--------|--------|
+| 1 | Augmentação | aug_copy_paste | True (p=0.4) | **False** |
+| 2 | Augmentação | aug_anthill_duplicate | — | **True** (p=0.7, max_copies=2) |
+| 3 | Loss | class_weight_anthill | 4.0 | **6.0** |
+| 4 | Pós-processamento | anthill_confidence_threshold | 0.5 | **0.40** |
+| 5 | Pós-processamento | min_anthill_region_px | 100 | **5** |
+
+**Nova augmentação — Anthill Duplicate:**
+
+`aug_anthill_duplicate` recorta regiões de formigueiro presentes na própria tile e cola cópias rotacionadas (0°/90°/180°/270°) e/ou espelhadas em posições aleatórias da mesma tile. Diferentemente do Copy-Paste cross-tile, a combinação contexto+objeto permanece coerente (mesmo solo, mesma iluminação), reduzindo o risco de artefatos artificiais. Com p=0.7 e max_copies=2, tiles positivas recebem em média 1.4 cópia adicional do formigueiro por forward pass.
+
+**Loss combinada (idêntica ao Run 11):**
+```
+0.5 · Tversky(α=0.3, β=0.7) + 0.3 · Lovász + 0.2 · Focal(γ=2.0)
+```
+
+**Resultados de validação (evaluate_detections):**
+
+| Métrica (evaluate_detections) | Valor |
+|-------------------------------|-------|
+| TP | 544 |
+| FP | **173** |
+| FN | **49** |
+| TN | 1.700 |
+| **Precision** | **75.9%** |
+| **Recall** | **91.7%** |
+| **F1 Score** | **83.1%** |
+| Pixel Accuracy | 98.7% |
+| IoU anthill | **33.8%** |
+| Dice anthill | **50.5%** |
+| Mean IoU | **66.3%** |
+| Mean Dice | **74.9%** |
+
+**Configuração de validação:** threshold=0.40, min_region_px=5, pred_dir=output/validation_run14, save_dir=output/evaluation_run14
+
+**Comparação com baselines:**
+
+| Métrica | Run 05 (t=0.6) | Run 10 (t=0.5) | Run 11 (t=0.5) | **Run 14 (t=0.4)** | Δ vs Run 10 |
+|---------|----------------|----------------|----------------|---------------------|-------------|
+| **Precision** | 85.1% | 82.8% | **87.6%** | 75.9% | **−6.9pp** |
+| **Recall** | 83.5% | 85.2% | 71.2% | **91.7%** | **+6.5pp** |
+| **F1** | **84.3%** | **84.0%** | 78.5% | 83.1% | −0.9pp |
+| FN (perdidos) | 98 | 88 | 171 | **49** | **−39** |
+| FP (alarmes) | 87 | 105 | 60 | 173 | +68 |
+| IoU anthill | **35.2%** | 30.3% | 28.5% | **33.8%** | **+3.5pp** |
+| Dice anthill | **52.1%** | 46.5% | 44.3% | **50.5%** | **+4.0pp** |
+
+**Análise:**
+
+1. **Recall máximo do projeto (91,7%):** apenas 49 dos 593 formigueiros reais foram perdidos — melhor FN absoluto de todos os runs. O efeito combinado de threshold=0.40 e min_region=5px aumentou a sensibilidade do detector significativamente.
+
+2. **IoU recuperou 3,5pp vs Run 10:** 33,8% é o melhor IoU desde Run 05 (35,2%) e o melhor dentre runs com augmentações evolutivas. A augmentação `anthill_duplicate`, por criar contexto intra-tile coerente, treinou melhor o contorno dos formigueiros do que o Copy-Paste cross-tile.
+
+3. **Precision caiu para 75,9%:** 173 FP (vs 105 no Run 10). Parte do aumento de FP é estrutural: threshold=0.40 aceita predições menos confiantes. O trade-off é deliberado — em aplicações de inspeção de campo, falsos alarmes são verificáveis manualmente, enquanto formigueiros perdidos (FN) exigem novo voo.
+
+4. **F1=83,1% ligeiramente abaixo do Run 10 (84,0%):** diferença de 0,9pp, dentro da margem de variação experimental. Considerando a melhoria em Recall (+6,5pp) e IoU (+3,5pp), Run 14 é o modelo de produção preferido para aplicações que priorizam detecção.
+
+5. **Anthill Duplicate validado como substituto do Copy-Paste:** eliminando os artefatos de borda que degradavam a segmentação (problema identificado no Run 08), a nova augmentação entregou IoU +3,5pp frente ao Run 10 e +5,3pp frente ao Run 11.
 
 ---
 

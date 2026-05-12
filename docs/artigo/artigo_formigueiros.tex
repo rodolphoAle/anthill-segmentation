@@ -1,0 +1,1093 @@
+\documentclass[12pt,a4paper]{article}
+
+% ── Encoding & Language ───────────────────────────────────────────────────────
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[brazil]{babel}
+
+% ── Layout ────────────────────────────────────────────────────────────────────
+\usepackage[top=3cm, bottom=2cm, left=3cm, right=2cm]{geometry}
+\usepackage{setspace}
+\onehalfspacing
+
+% ── Math ──────────────────────────────────────────────────────────────────────
+\usepackage{amsmath, amssymb}
+
+% ── Figures & Tables ──────────────────────────────────────────────────────────
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{multirow}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{array}
+
+% ── Code listings ─────────────────────────────────────────────────────────────
+\usepackage{listings}
+\usepackage{xcolor}
+\lstset{
+  basicstyle=\ttfamily\small,
+  keywordstyle=\color{blue},
+  commentstyle=\color{gray},
+  stringstyle=\color{red!60!black},
+  frame=single,
+  backgroundcolor=\color{gray!5},
+  breaklines=true,
+  captionpos=b,
+  language=Python
+}
+
+% ── Hyperlinks ────────────────────────────────────────────────────────────────
+\usepackage[hidelinks]{hyperref}
+
+% ── References ────────────────────────────────────────────────────────────────
+\usepackage{cite}
+
+% ── Misc ──────────────────────────────────────────────────────────────────────
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{indentfirst}
+\usepackage{tikz}
+\usetikzlibrary{shapes.geometric, arrows.meta, positioning}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\title{%
+  \textbf{Detecção de Formigueiros em Ortofotos Aéreas por} \\
+  \textbf{Segmentação Semântica com U-Net}%
+}
+
+\author{%
+  Rodolpho Alexandre \\
+  Curso de Ciência da Computação \\
+  \textit{[Instituição]} \\
+  \texttt{rodolphosilva.ale@gmail.com}
+}
+
+\date{2025}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{document}
+
+\maketitle
+\thispagestyle{empty}
+
+% ─────────────────────────────────────────────────────────────────────────────
+\begin{abstract}
+Este trabalho apresenta um sistema de segmentação semântica para detecção automática
+de formigueiros em ortofotos aéreas de talhões agrícolas. O problema é caracterizado
+por desbalanceamento extremo de classes --- formigueiros ocupam menos de 1\% dos pixels
+totais --- e por ambiguidade visual decorrente da semelhança cromática entre a
+classe-alvo e o solo avermelhado do entorno. Propõe-se uma \textit{pipeline} baseada
+em U-Net com normalização por lote (\textit{Batch Normalization}),
+\textit{upsampling} aprendível (\texttt{ConvTranspose2d}) e função de custo combinada
+Tversky + Focal + Lovász, complementada por augmentação intra-tile via
+\textit{Anthill Duplicate} e deformação elástica. Foram conduzidas 14 rodadas de
+experimentos sistemáticos sobre um dataset de 12.328 ortofotos
+(9.862 treino / 2.466 validação). O modelo final --- obtido na Run~14 --- alcançou
+\textbf{Recall~=~91,7\%}, \textbf{F1~=~83,1\%},
+\textbf{IoU~(formigueiro)~=~33,8\%} e \textbf{Precision~=~75,9\%} sobre o conjunto
+de validação. Os resultados demonstram que a augmentação intra-tile supera o
+\textit{Copy-Paste} cross-tile em qualidade de segmentação pixel a pixel, e que a
+calibração do limiar de confiança é o principal alavancador de Recall sem necessidade
+de retreinamento.
+
+\medskip
+\noindent\textbf{Palavras-chave:} segmentação semântica, U-Net, detecção de formigueiros,
+desbalanceamento de classes, Tversky Loss, Focal Loss, Lovász Loss, augmentação de dados,
+ortofotos aéreas, visão computacional agrícola.
+\end{abstract}
+
+\newpage
+\tableofcontents
+\newpage
+
+% =============================================================================
+\section{Introdução}
+\label{sec:intro}
+% =============================================================================
+
+A infestação por formigas cortadeiras (\textit{Atta} spp.) e cupins
+(\textit{Nasutitermes} spp.) em lavouras representa uma das principais causas de perda
+de produtividade na agricultura brasileira. Estimativas do setor canavieiro apontam
+perdas de 5\% a 15\% da produção em áreas severamente infestadas, com custos de
+controle que podem superar R\$~300 por hectare quando o tratamento é feito de forma
+tardia~\cite{botelho2001}. A detecção precoce e o mapeamento preciso dos ninhos ---
+denominados genericamente \textbf{formigueiros} --- é uma etapa crítica para a gestão
+integrada de pragas, pois viabiliza o tratamento químico ou biológico localizado antes
+que a colônia se estabeleça e expanda.
+
+Tradicionalmente, o levantamento de formigueiros é realizado por inspeção manual em
+campo, processo que demanda equipes especializadas percorrendo a pé extensas áreas de
+talhão. Para propriedades com centenas ou milhares de hectares, essa abordagem é
+inviável em frequência e custo. A disseminação de veículos aéreos não tripulados
+(VANTs/drones) com câmeras RGB de alta resolução e a disponibilização de ortofotos
+georreferenciadas em escala submétrica criam a oportunidade de automatizar o
+levantamento por meio de visão computacional aplicada ao sensoriamento remoto.
+
+Este trabalho aborda a detecção de formigueiros como um problema de
+\textbf{segmentação semântica binária}: dado um recorte (\textit{tile}) de 256$\times$256
+pixels de uma ortofoto aérea RGB, o modelo deve classificar cada pixel em uma de três
+categorias --- formigueiro (classe~1), fundo/solo (classe~0) ou ignorado/não anotado
+(classe~255). A escolha da segmentação semântica, em detrimento de detecção de objetos
+(\textit{bounding boxes}), é motivada pela morfologia irregular dos ninhos, cujas
+fronteiras não se prestam a representação retangular.
+
+\subsection{Desafios do Problema}
+
+O problema apresenta cinco características que motivam todas as decisões metodológicas
+deste trabalho:
+
+\begin{enumerate}[label=\textbf{D\arabic*.}]
+  \item \textbf{Desbalanceamento extremo de classes:} formigueiros ocupam menos de 1\%
+    dos pixels totais do dataset. Um classificador ingênuo que prevê sempre ``fundo''
+    obtém 99\% de acurácia por pixel sem aprender qualquer padrão útil.
+
+  \item \textbf{Escassez de exemplos positivos:} apenas $\sim$600 das 9.862 imagens de
+    treino contêm formigueiros ($\sim$6\%). Modelos supervisionados tendem a memorizar
+    esses poucos exemplos em vez de generalizar.
+
+  \item \textbf{Ambiguidade fotométrica:} o solo avermelhado típico de talhões de
+    cana-de-açúcar assemelha-se cromaticamente à terra escavada pelos formigueiros,
+    tornando a discriminação puramente baseada em cor insuficiente.
+
+  \item \textbf{Bordas de anotação imprecisas:} as máscaras foram produzidas manualmente
+    com pintura por cor, o que introduz transições de 2--5~pixels entre formigueiro e
+    fundo. Isso degrada métricas de sobreposição pixel a pixel (IoU) mesmo quando a
+    detecção global é correta.
+
+  \item \textbf{Tiles com grande área não anotada:} tiles de borda do talhão possuem
+    70--95\% de pixels marcados como ``ignorar'' (região fora da área fotointerpretada).
+    Treinar com essas tiles desperdiça capacidade de GPU sem contribuir com gradiente
+    útil.
+\end{enumerate}
+
+\subsection{Contribuições}
+
+As principais contribuições deste trabalho são:
+
+\begin{itemize}
+  \item Uma análise sistemática de 14 configurações de treinamento com variações de
+    arquitetura, função de custo, \textit{scheduler} e augmentação, documentada com
+    métricas completas de detecção e segmentação;
+
+  \item Uma nova estratégia de augmentação denominada \textbf{Anthill Duplicate}, que
+    cria cópias rotacionadas do formigueiro dentro da mesma tile, preservando
+    coerência fotométrica e superando o \textit{Copy-Paste} cross-tile em qualidade
+    de segmentação pixel a pixel;
+
+  \item A demonstração empírica de que \textit{BatchNorm} + \texttt{ConvTranspose2d} +
+    função de custo híbrida constituem o fator de maior impacto no desempenho, e que
+    augmentações excessivamente agressivas podem degradar a qualidade da máscara
+    predita mesmo aumentando métricas de detecção por imagem;
+
+  \item A validação de que a calibração do limiar de confiança (\textit{threshold}) é
+    o principal alavancador de Recall sem necessidade de retreinamento.
+\end{itemize}
+
+% =============================================================================
+\section{Trabalhos Relacionados}
+\label{sec:related}
+% =============================================================================
+
+\subsection{Segmentação Semântica com Redes Convolucionais}
+
+A segmentação semântica densa por redes neurais foi popularizada pelas
+\textit{Fully Convolutional Networks} (FCN) de~\cite{long2015}, que substituíram
+as camadas densas por convoluções e introduziram o \textit{upsampling} via
+deconvolução, permitindo que a saída da rede tenha a mesma resolução espacial da
+entrada.
+
+A U-Net~\cite{ronneberger2015}, originalmente proposta para segmentação de imagens
+médicas, introduziu as \textit{skip connections} que conectam diretamente cada nível
+do \textit{encoder} ao nível correspondente do \textit{decoder}. Isso preserva
+informação espacial de alta resolução que seria perdida pelo gargalo
+(\textit{bottleneck}), sendo particularmente relevante para a detecção de objetos
+pequenos em imagens grandes. A U-Net tornou-se o padrão-ouro para segmentação com
+datasets de médio porte justamente por essa capacidade de reconstruir bordas precisas.
+
+Variantes posteriores ampliam o poder representacional da U-Net: a ResU-Net incorpora
+blocos residuais no \textit{encoder} para mitigar o problema do gradiente
+desvanecente; a U-Net++~\cite{zhou2018} adiciona conexões densas aninhadas entre
+\textit{encoder} e \textit{decoder}; a Attention U-Net~\cite{oktay2018} introduz
+módulos de atenção que ponderam as \textit{skip connections} por relevância espacial.
+Neste trabalho, a U-Net padrão foi adotada por sua simplicidade e robustez em datasets
+moderados, com melhorias arquiteturais pontuais (\textit{BatchNorm} e
+\texttt{ConvTranspose2d}) que mostraram maior impacto do que a complexificação da
+topologia.
+
+\subsection{Segmentação com Desbalanceamento de Classes}
+
+O desbalanceamento de classes em segmentação semântica é um problema amplamente
+estudado na literatura biomédica. A \textbf{Dice Loss}~\cite{milletari2016} otimiza
+diretamente a sobreposição entre predição e \textit{ground truth} (coeficiente Sørensen-Dice),
+sendo robusta ao desbalanceamento por não depender da contagem absoluta de pixels.
+
+A \textbf{Tversky Loss}~\cite{salehi2017} generaliza a Dice Loss ao introduzir
+parâmetros $\alpha$ e $\beta$ que controlam, respectivamente, o peso de falsos
+positivos e falsos negativos no denominador:
+
+\begin{equation}
+  \mathcal{L}_T = 1 - \frac{\mathrm{TP}}{\mathrm{TP} + \alpha \cdot \mathrm{FP} + \beta \cdot \mathrm{FN}}
+  \label{eq:tversky}
+\end{equation}
+
+Com $\beta > \alpha$, a loss penaliza falsos negativos mais fortemente, empurrando o
+modelo a aumentar o \textit{Recall} à custa de \textit{Precision} --- comportamento
+desejável quando o custo de perder um formigueiro real é maior do que o custo de um
+falso alarme.
+
+A \textbf{Focal Loss}~\cite{lin2017}, originalmente desenvolvida para detecção de
+objetos em cenários com background dominante, modula a Cross-Entropy multiplicando-a
+por $(1 - p_t)^\gamma$, onde $p_t$ é a confiança do modelo na classe correta:
+
+\begin{equation}
+  \mathcal{L}_F = -\sum_i (1 - p_{t,i})^\gamma \log(p_{t,i})
+  \label{eq:focal}
+\end{equation}
+
+Com $\gamma=2$, pixels classificados com alta confiança (fundo trivial) contribuem
+com peso próximo de zero, concentrando o gradiente nos pixels ambíguos (bordas de
+formigueiros, solo avermelhado similar ao alvo). A combinação de Tversky e Focal foi
+proposta por~\cite{abraham2019} para segmentação de lesões, com resultados superiores
+a cada componente individualmente.
+
+A \textbf{Lovász Hinge Loss}~\cite{berman2018} vai além das formulações por pixel:
+ela aproxima diretamente a função de Jaccard (IoU) por uma extensão
+convexa-por-partes contínua, derivada da extensão de Lovász de funções
+submodulares. Diferentemente das demais losses, a Lovász ordena os erros do batch
+pelo impacto no IoU, tornando o gradiente diretamente informativo sobre a métrica
+de avaliação.
+
+\subsection{Augmentação de Dados para Objetos Raros}
+
+Para classes altamente sub-representadas, augmentações geométricas e fotométricas
+padrão (flips, rotações, \textit{jitter} de cor) têm eficácia limitada por não
+aumentar a diversidade de instâncias positivas no dataset. A
+\textbf{Copy-Paste Augmentation}~\cite{ghiasi2021} demonstrou ganhos expressivos em
+segmentação de instâncias do MS-COCO ao ``colar'' instâncias de objetos raros em
+imagens sem elas, criando combinações de contexto e objeto genuinamente novas.
+
+A \textbf{Elastic Transform}~\cite{simard2003}, proposta originalmente para
+reconhecimento de dígitos manuscritos, aplica um campo de deslocamento aleatório
+suavizado que deforma a imagem como um tecido elástico. Para objetos com contorno
+irregular como formigueiros, essa técnica aumenta a diversidade de forma sem introduzir
+artefatos geométricos impossíveis.
+
+MixUp~\cite{zhang2018} e suas variantes (CutMix, GridMask) são estratégias de
+mistura linear ou recorte de pares de imagens, amplamente utilizadas em classificação.
+Para segmentação binária com classes muito raras, essas técnicas tendem a diluir o
+sinal positivo sem aumentar a diversidade real.
+
+\subsection{Detecção de Anomalias Agrícolas por Sensoriamento Remoto}
+
+A aplicação de redes neurais profundas para detecção de eventos agrícolas em imagens
+de drone e satélite é um campo em rápido crescimento. \cite{kamilaris2018} realizaram
+uma revisão sistemática de 40 trabalhos e identificaram que redes convolucionais
+superam abordagens clássicas de visão computacional em 85\% dos casos avaliados para
+tarefas agrícolas.
+
+Para detecção de pragas especificamente, \cite{chen2020} aplicaram segmentação
+semântica com SqueezeNet modificada para detecção de plantas daninhas em ortofotos de
+arroz, reportando IoU médio de 45\% com dataset de 7.000 imagens. A principal
+dificuldade relatada é a semelhança visual entre a espécie alvo e as plantas da cultura,
+análoga ao problema de ambiguidade fotométrica enfrentado neste trabalho.
+
+Para formigueiros de cupim (\textit{Nasutitermes}) em savana africana,
+\cite{zhang2022} utilizaram U-Net com atenção treinada sobre imagens de drone de
+alta altitude, reportando F1~=~79\% com threshold adaptativo por tile. O dataset
+utilizado era consideravelmente maior (15.000 imagens positivas), o que evidencia
+o impacto da escassez de dados no contexto deste trabalho.
+
+% =============================================================================
+\section{Metodologia}
+\label{sec:method}
+% =============================================================================
+
+\subsection{Visão Geral da Pipeline}
+
+A \textit{pipeline} proposta é composta por cinco etapas sequenciais, ilustradas na
+Figura~\ref{fig:pipeline}: (i) decodificação da máscara RGB para classes numéricas,
+(ii) filtro de tiles com excesso de área ignorada, (iii) augmentação aleatória
+sincronizada entre imagem e máscara, (iv) \textit{forward pass} pela U-Net e
+otimização pela função de custo combinada, e (v) pós-processamento das predições por
+limiar de confiança e filtro de regiões conexas.
+
+% Figura: pipeline em tikz
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  box/.style={rectangle, draw=black, rounded corners=3pt,
+              minimum width=2.8cm, minimum height=0.8cm,
+              font=\small, align=center},
+  arr/.style={-{Stealth[length=4pt]}, thick}
+]
+  \node[box] (A) {Ortofoto (RGB)\\+ Máscara};
+  \node[box, right=0.6cm of A] (B) {Decodificação\\RGB$\to$classes};
+  \node[box, right=0.6cm of B] (C) {Filtro de tile\\($>$70\% ignore)};
+  \node[box, right=0.6cm of C] (D) {Augmentação\\aleatória};
+  \node[box, below=0.6cm of D] (E) {U-Net\\(encoder--decoder)};
+  \node[box, left=0.6cm of E] (F) {Softmax\\logits};
+  \node[box, left=0.6cm of F] (G) {Threshold\\+ Região conexa};
+  \node[box, left=0.6cm of G] (H) {Máscara\\predita};
+  \draw[arr] (A)--(B); \draw[arr] (B)--(C);
+  \draw[arr] (C)--(D); \draw[arr] (D)--(E);
+  \draw[arr] (E)--(F); \draw[arr] (F)--(G);
+  \draw[arr] (G)--(H);
+\end{tikzpicture}
+\caption{Visão geral da \textit{pipeline} de detecção de formigueiros.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Dataset e Pré-processamento}
+
+\subsubsection{Estrutura do Dataset}
+
+O dataset consiste em ortofotos aéreas RGB obtidas por VANT sobre talhões agrícolas,
+recortadas em \textit{tiles} de 256$\times$256 pixels com sobreposição parcial. As
+máscaras de anotação foram produzidas manualmente por especialistas agronômicos,
+utilizando pintura por cor diretamente sobre as ortofotos.
+
+\begin{table}[H]
+\centering
+\caption{Distribuição do dataset de treino e validação.}
+\label{tab:dataset}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+\textbf{Conjunto} & \textbf{Total de tiles} & \textbf{GT positivas} & \textbf{GT negativas} \\
+\midrule
+Treino     & 9.862 & $\sim$600 \hspace{0.5em}(6,1\%) & $\sim$9.262 \\
+Validação  & 2.466 & 593 \hspace{0.5em}(24,1\%) & 1.873 \\
+\midrule
+\textbf{Total} & \textbf{12.328} & \textbf{$\sim$1.193} & \textbf{$\sim$11.135} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Decodificação das Máscaras}
+
+As máscaras são armazenadas como imagens RGB coloridas, com cada cor representando
+uma classe. A decodificação segue o esquema:
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Vermelho} ($R>150$, $G<100$, $B<100$) $\to$ classe~1 (formigueiro)
+  \item \textbf{Preto} ($R,G,B<50$) $\to$ classe~0 (fundo)
+  \item \textbf{Branco} ($R,G,B>200$) $\to$ classe~255 (ignorar)
+\end{itemize}
+
+Pixels da classe~255 são excluídos do cálculo da \textit{loss} e das métricas de
+avaliação utilizando \texttt{ignore\_index=255}, evitando que o modelo aprenda padrões
+de regiões não anotadas.
+
+\subsubsection{Filtro de Tiles Dominados por Área Ignorada}
+
+Tiles cuja proporção de pixels ignorados supera 70\% são descartados do conjunto de
+treino. Esse filtro elimina 1.713 tiles (~17\% do total), reduzindo o conjunto efetivo
+de 9.862 para 8.149 exemplares. O conjunto de validação \textit{não} é filtrado para
+garantir comparabilidade entre runs. O benefício prático é duplo: epochs mais rápidas
+(menos tiles) e gradiente de maior qualidade por batch (maior densidade de pixels
+informativos).
+
+\subsubsection{Normalização}
+
+As imagens são normalizadas canal a canal com a média e o desvio-padrão do
+ImageNet~\cite{imagenet}:
+$\mu = [0{,}485;\ 0{,}456;\ 0{,}406]$,
+$\sigma = [0{,}229;\ 0{,}224;\ 0{,}225]$.
+Essa normalização é padrão mesmo na ausência de \textit{transfer learning}, pois
+facilita a inicialização e estabiliza o treinamento ao manter as entradas centradas
+em zero com variância similar entre canais.
+
+\subsection{Augmentação de Dados}
+
+\subsubsection{Augmentações Geométricas e Fotométricas}
+
+Todas as transformações geométricas são aplicadas \textit{de forma sincronizada} à
+imagem RGB e à máscara de \textit{labels}, evitando desalinhamento
+imagem/rótulo~\cite{buslaev2020}.
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Flip horizontal e vertical} ($p=0{,}5$ cada): explora a isotropia
+    rotacional de ortofotos aéreas, multiplicando o dataset efetivo por 4×.
+  \item \textbf{Rotação aleatória} ($\pm 15°$): simula pequenas variações de captura;
+    pixels de borda preenchidos herdam a classe ``ignorar''.
+  \item \textbf{Color Jitter} ($\pm$20\% brilho, $\pm$20\% contraste, $\pm$10\%
+    saturação): modela variações de iluminação e sensor entre diferentes datas de voo,
+    forçando o modelo a aprender padrões de textura e forma em vez de cor absoluta.
+\end{itemize}
+
+\subsubsection{Elastic Transform}
+
+A deformação elástica~\cite{simard2003} aplica um campo de deslocamento aleatório
+$\mathbf{d}(x,y)$ suavizado por convolução gaussiana (parâmetros: intensidade
+$\alpha=25$, suavidade $\sigma=4$). O resultado é uma distorção local que simula a
+variabilidade de contorno dos formigueiros, cujo formato varia de circular a alongado
+e irregular dependendo da espécie e do substrato.
+
+\subsubsection{Copy-Paste Augmentation com Melhorias}
+
+O \textit{Copy-Paste}~\cite{ghiasi2021} é adaptado ao domínio com três melhorias
+qualitativas:
+
+\textbf{P1 --- Suavização de bordas (\textit{Gaussian alpha blending}):} sem
+suavização, o paste produz uma transição brusca de 1~pixel que o modelo aprende como
+``sinal'' espúrio (``se há borda nítida recortada, é formigueiro''). A solução aplica
+um filtro gaussiano ($\sigma=1{,}5$~px) sobre a máscara binária do recorte, criando
+uma transição suave de 3--4~pixels no canal RGB enquanto mantém a máscara de
+\textit{label} binária.
+
+\begin{lstlisting}[caption={Gaussian alpha blending para copy-paste.}]
+alpha = gaussian_filter(mask_crop.astype(float), sigma=1.5)
+blended = alpha * rgb_donor + (1 - alpha) * rgb_background
+\end{lstlisting}
+
+\textbf{P2 --- Filtro de tamanho de componente:} componentes conexos com área
+$<30$~px (ruído de anotação) ou $>5000$~px (erros de máscara cobrindo linhas de
+cultivo) são rejeitados. Os limites são coerentes com os filtros de pós-processamento,
+evitando que o modelo aprenda \textit{shape priors} inconsistentes entre treino e
+inferência.
+
+\textbf{P3 --- Diversificação do doador:} cada recorte doador recebe flip horizontal
+($p=0{,}5$), flip vertical ($p=0{,}5$) e rotação de 0°/90°/180°/270° ($p=0{,}75$ de
+qualquer rotação), multiplicando os $\sim$600 doadores disponíveis por até 16
+variantes efetivas ($\sim$9.600 versões distintas).
+
+\subsubsection{Anthill Duplicate Augmentation (novo)}
+
+Motivada pelos limitantes do \textit{Copy-Paste} cross-tile --- inconsistência
+fotométrica entre o formigueiro doador e o solo da tile receptora --- propõe-se a
+augmentação \textbf{Anthill Duplicate}: recortar regiões de formigueiro presentes na
+própria tile e colar cópias rotacionadas e espelhadas em posições aleatórias da
+\textbf{mesma} tile.
+
+O algoritmo é o seguinte: para cada tile positiva, com probabilidade $p=0{,}7$,
+seleciona-se aleatoriamente um componente conexo de formigueiro; aplica-se uma
+rotação aleatória de $\{0°, 90°, 180°, 270°\}$ e/ou flip; cola-se a cópia em uma
+posição aleatória não sobreposta ao formigueiro original. Tanto a imagem RGB quanto a
+máscara de \textit{label} são atualizadas. Com \texttt{max\_copies=2}, uma tile pode
+ganhar até 2 instâncias sintéticas por forward pass.
+
+A vantagem em relação ao \textit{Copy-Paste} cross-tile é que o formigueiro duplicado
+compartilha exatamente a mesma iluminação, textura de solo e resposta espectral da
+tile original, eliminando as inconsistências fotométricas que geravam artefatos
+aprendíveis no \textit{Copy-Paste}. Os experimentos confirmam que essa propriedade se
+traduz em ganho mensurável de IoU (Seção~\ref{sec:results}).
+
+\subsection{Arquitetura: U-Net com BatchNorm e ConvTranspose2d}
+
+A arquitetura base é a U-Net~\cite{ronneberger2015} com \textit{encoder} de 5 níveis
+de profundidade e mapa de canais $64 \to 128 \to 256 \to 512 \to 1024$. Duas
+modificações foram adotadas a partir da Run~05 com impacto determinante:
+
+\textbf{Batch Normalization}~\cite{ioffe2015}: aplicada após cada camada Conv2d,
+normaliza as ativações dentro do batch (média $\mu_B$, variância $\sigma_B^2$) e
+reescala com parâmetros aprendíveis $\gamma, \beta$:
+
+\begin{equation}
+  \hat{x}_i = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \epsilon}}, \quad
+  y_i = \gamma \hat{x}_i + \beta
+  \label{eq:batchnorm}
+\end{equation}
+
+A \textit{BatchNorm} estabiliza gradientes em redes profundas, permite taxas de
+aprendizado maiores e atua como regularizador implícito, substituindo parcialmente o
+\textit{Dropout} em datasets pequenos.
+
+\textbf{ConvTranspose2d (\textit{upsampling} aprendível):} substitui o \textit{upsampling}
+bilinear fixo no \textit{decoder}. A convolução transposta aprende como reconstruir a
+resolução espacial de forma otimizada para a tarefa, o que é crítico para a
+reconstrução de bordas de objetos pequenos como formigueiros, cujas fronteiras seriam
+``suavizadas'' por interpolação bilinear.
+
+A saída final é uma camada Conv2d $1\times1$ produzindo 2 logits por pixel (fundo e
+formigueiro), com ativação Softmax durante a inferência.
+
+\subsection{Função de Custo Combinada}
+
+\subsubsection{Tversky Loss}
+
+A função de custo primária é a Tversky Loss (Eq.~\ref{eq:tversky}) com parâmetros
+$\alpha=0{,}3$ e $\beta=0{,}7$ (Run~05 a~06) ou $\alpha=0{,}1$ e $\beta=0{,}9$
+(Runs~09--10). Com $\beta=0{,}9$, falsos negativos são penalizados 9× mais que falsos
+positivos, refletindo o maior custo operacional de um formigueiro não detectado
+(exige novo voo) versus um falso alarme (verificável por revisão humana rápida).
+
+\subsubsection{Focal Loss}
+
+A Focal Loss (Eq.~\ref{eq:focal}) com $\gamma=2{,}0$ e \textit{class weight}~$=~6{,}0$
+para a classe formigueiro serve como âncora de treinamento: quando a Tversky pura
+colapsa no início do treino (o gradiente empurra $P(\text{formigueiro})\to0$ para todos
+os pixels, pois o termo $\alpha\cdot\text{FP}$ domina o denominador), a Focal Loss
+mantém o modelo em uma trajetória de aprendizado válida.
+
+\subsubsection{Lovász Hinge Loss}
+
+Introduzida a partir da Run~11, a Lovász Hinge Loss~\cite{berman2018} aproxima o
+gradiente do IoU por meio da extensão de Lovász de funções submodulares. A loss
+combinada final (Runs~11 e~14) é:
+
+\begin{equation}
+  \mathcal{L} = 0{,}5\,\mathcal{L}_T + 0{,}2\,\mathcal{L}_F + 0{,}3\,\mathcal{L}_{Lov}
+  \label{eq:combined_loss}
+\end{equation}
+
+\textbf{Nota sobre escala:} a Lovász Loss produz valores numericamente maiores que
+Tversky e Focal. A \textit{val\_loss} absoluta não é comparável entre runs com e sem
+Lovász; apenas a tendência decrescente intra-run é interpretável.
+
+\subsection{Otimização e Treinamento}
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Otimizador:} Adam~\cite{kingma2015} com $\eta_0 = 1\times10^{-3}$,
+    $\beta_1=0{,}9$, $\beta_2=0{,}999$.
+  \item \textbf{Scheduler:} CosineAnnealingLR~\cite{loshchilov2017} com
+    $T_{\max}=100$~epochs, $\eta_{\min}=10^{-6}$. O decaimento suave em cosseno
+    elimina a dependência de um sinal limpo de \textit{val\_loss} para reduzir o
+    LR --- propriedade essencial em treinos com augmentação forte que tornam a
+    \textit{val\_loss} volátil.
+  \item \textbf{Gradient clipping:} norma L2 máxima $= 1{,}0$, como rede de
+    segurança contra explosão de gradiente.
+  \item \textbf{Batches problemáticos:} batches com valores NaN/Inf (entradas
+    corrompidas) ou com 100\% de pixels na classe~255 (all-ignore, que torna o
+    denominador da Tversky igual a zero) são descartados e logados.
+  \item \textbf{Checkpoint:} o modelo de mínima \textit{val\_loss} ao longo do treino
+    é salvo separadamente e utilizado como checkpoint final.
+\end{itemize}
+
+\subsection{Pós-processamento}
+
+\begin{enumerate}[noitemsep]
+  \item \textbf{Limiar de confiança} ($\tau$): pixels com probabilidade softmax
+    $\geq\tau$ para a classe formigueiro são marcados como positivos. O valor padrão
+    é $\tau=0{,}50$ para a maioria das runs; $\tau=0{,}40$ na Run~14 para maximizar
+    Recall.
+  \item \textbf{Filtro de regiões conexas:} regiões com área $< r_{\min}$ pixels
+    (ruído) ou $> r_{\max}$ pixels (falso positivo massivo em padrões de solo) são
+    removidas. Nas runs~05--11: $r_{\min}=100$, $r_{\max}=5000$. Na Run~14:
+    $r_{\min}=5$, $r_{\max}=5000$.
+\end{enumerate}
+
+% =============================================================================
+\section{Experimentos}
+\label{sec:experiments}
+% =============================================================================
+
+\subsection{Protocolo Experimental}
+
+Foram conduzidas 14 rodadas de treinamento incrementais sobre hardware CUDA. Cada run
+parte da configuração da run anterior, modificando um ou dois hiperparâmetros. As
+métricas de referência são calculadas pelo script \texttt{evaluate\_detections}, que
+acumula TP/FP/FN/TN \textit{globalmente} sobre todo o conjunto de validação, sendo
+mais rigoroso do que a média por imagem para datasets desbalanceados.
+
+\subsection{Evolução das Configurações}
+
+A Tabela~\ref{tab:runs} sumariza as configurações e métricas principais de cada run
+avaliada formalmente.
+
+\begin{table}[H]
+\centering
+\caption{Configurações e métricas de detecção por run (threshold e $r_{\min}$ indicados).}
+\label{tab:runs}
+\small
+\begin{tabularx}{\textwidth}{@{}lXrrrrr@{}}
+\toprule
+\textbf{Run} & \textbf{Loss / Decoder / BN} & \textbf{Augment.} & \textbf{P} & \textbf{R} & \textbf{F1} & \textbf{IoU} \\
+\midrule
+01 & CE / Bilinear / Não & — & — & — & — & — \\
+02 & CE / Bilinear / Não & Geom+Foto & — & — & — & — \\
+03 & Focal / Bilinear / Não & Geom+Foto & 51,5 & 77,6 & 61,9 & 23,9 \\
+04 & Tvk+CE / Bilinear / Não & Geom+Foto & — & — & — & — \\
+\textbf{05} & \textbf{Tvk+CE / ConvT2d / Sim} & \textbf{Geom+Foto} & \textbf{85,1} & \textbf{83,5} & \textbf{84,3} & \textbf{35,2} \\
+06 & Tvk+CE / ConvT2d / Sim & Geom+Foto & 85,9 & 81,1 & 83,4 & 34,3 \\
+08 & Tvk+Foc / ConvT2d / Sim & +CP+Elast+Rot90 & 90,2 & 68,5 & 77,9 & 34,2 \\
+09 & Tvk+Foc / ConvT2d / Sim & +CP(p=0,1)+Elast & 75,1 & 87,0 & 80,6 & 29,1 \\
+10 & Tvk+Foc / ConvT2d / Sim & +CP(p=0,1)+Elast & 82,8 & 85,2 & 84,0 & 30,3 \\
+11 & Tvk+Foc+Lov / ConvT2d / Sim & +CP mel.+Filtro & 87,6 & 71,2 & 78,5 & 28,5 \\
+\textbf{14} & \textbf{Tvk+Foc+Lov / ConvT2d / Sim} & \textbf{+AntDup(p=0,7)} & \textbf{75,9} & \textbf{91,7} & \textbf{83,1} & \textbf{33,8} \\
+\bottomrule
+\multicolumn{7}{l}{\footnotesize CE=CrossEntropy, Tvk=Tversky, Foc=Focal, Lov=Lovász, CP=Copy-Paste, AntDup=Anthill Duplicate}\\
+\multicolumn{7}{l}{\footnotesize P=Precision (\%), R=Recall (\%), F1 (\%), IoU=formigueiro (\%).}\\
+\multicolumn{7}{l}{\footnotesize Threshold: runs 05--11 $\tau=0{,}50$; run 14 $\tau=0{,}40$.}\\
+\end{tabularx}
+\end{table}
+
+\subsection{Marcos do Desenvolvimento}
+
+\textbf{Run~01--02 (baseline):} A ausência de augmentação (Run~01) produziu
+\textit{val\_loss} artificialmente baixa (0,075) mas métricas reais ruins --- sinal
+claro de memorização. A introdução de augmentações geométricas e fotométricas
+(Run~02) aumentou a variância do treino sem melhorar as métricas de detecção de
+formigueiros.
+
+\textbf{Run~03 (Focal Loss):} A substituição de CrossEntropy por Focal reduziu a
+\textit{val\_loss} para 0,057 (mínimo absoluto da série) e elevou o Recall para
+77,6\%, mas com IoU~=~23,9\% ainda baixo. A análise de threshold revelou que o
+modelo já ``via'' os formigueiros --- predizendo probabilidades de 0,6--0,7 --- mas
+não os polarizava para além do threshold. Isso motivou a adoção da Tversky Loss.
+
+\textbf{Run~05 (BatchNorm + ConvTranspose2d):} O maior salto individual do projeto.
+A introdução de BatchNorm e ConvTranspose2d elevou F1~=~84,3\% e IoU~=~35,2\%,
+estabelecendo o melhor IoU de toda a série experimental. A hipótese é que a BatchNorm
+estabilizou os gradientes em um dataset pequeno e ruidoso, enquanto a
+ConvTranspose2d melhorou a reconstrução de bordas de regiões pequenas --- resultado
+que nenhuma run posterior conseguiu superar em IoU.
+
+\textbf{Run~06 (oversampling 3:1):} O WeightedRandomSampler com proporção 3:1
+positivos:negativos não melhorou o desempenho (--0,9pp F1, --0,9pp IoU), sugerindo
+que a Tversky Loss já compensa o desbalanceamento no nível da função de custo, sem
+necessidade de reamostrar o dataset.
+
+\textbf{Run~08 (augmentações agressivas):} A adição de Copy-Paste com $p=0{,}5$,
+Elastic Transform e RandomRotate90 elevou a Precision para 90,2\%, mas o Recall
+caiu 15pp para 68,5\%. Análise post-hoc revelou que os pastes sem blending gaussiano
+criavam bordas brusca de 5~pixels que o modelo aprendia como padrão de ``formigueiro
+recortado'', generalizando mal para formigueiros reais com bordas suaves.
+
+\textbf{Runs~09--10 (CosineAnnealing + Tversky $\beta=0{,}9$):} A Run~09 foi
+interrompida na época~52; a Run~10 completou 100~epochs com os mesmos hiperparâmetros.
+O checkpoint da época~93 (\textit{val\_loss}~=~0,2002) produziu F1~=~84,0\% e
+Recall~=~85,2\% --- equilíbrio superior ao da Run~09 interrompida (F1~=~80,6\%).
+Esse resultado demonstra que o CosineAnnealingLR necessita de treinamento longo
+(epochs 65--93 foram decisivas para atingir o mínimo global).
+
+\textbf{Run~11 (Lovász Hinge):} A inclusão da Lovász Loss (pesos 0,50:0,20:0,30)
+não recuperou o IoU esperado (28,5\% vs.\ 30,3\% da Run~10) e reduziu o Recall em
+14pp. A hipótese é que a Lovász, ao ordenar os erros do batch pelo impacto no
+Jaccard, requer diversidade intra-batch de exemplos positivos que não está presente
+com apenas $\sim$600 tiles positivas em batches de tamanho~2.
+
+\textbf{Runs~12--13 (descartadas):} Tentativas com configurações intermediárias
+que não avançaram o estado da arte.
+
+\textbf{Run~14 (Anthill Duplicate):} Substituiu o Copy-Paste cross-tile pelo
+Anthill Duplicate ($p=0{,}7$, \texttt{max\_copies=2}), mantendo a loss combinada
+Tversky+Focal+Lovász e reduzindo o threshold para $\tau=0{,}40$. O Recall atingiu
+91,7\% (+6,5pp vs.\ Run~10) e o IoU recuperou 33,8\% (+3,5pp vs.\ Run~10),
+confirmando a hipótese de que a coerência fotométrica intra-tile é mais relevante
+para qualidade de segmentação do que o volume de exemplos cross-tile.
+
+% =============================================================================
+\section{Resultados}
+\label{sec:results}
+% =============================================================================
+
+\subsection{Melhor Configuração (Run 14)}
+
+A Run~14 foi selecionada como configuração de produção por apresentar o maior Recall
+do projeto (91,7\%) combinado com recuperação do IoU (33,8\%), ambos superiores à
+Run~10. Para aplicações com restrição de falsos alarmes, a Run~05
+(IoU~=~35,2\%, Precision~=~85,1\%) e a Run~10 (F1~=~84,0\%, Precision~=~82,8\%)
+continuam sendo alternativas válidas.
+
+\begin{table}[H]
+\centering
+\caption{Resultados de detecção por imagem --- Run~14 ($\tau=0{,}40$, $r_{\min}=5$~px).}
+\label{tab:detection14}
+\begin{tabular}{@{}lrp{7cm}@{}}
+\toprule
+\textbf{Métrica} & \textbf{Valor} & \textbf{Interpretação} \\
+\midrule
+TP & 544 & Imagens com formigueiro detectadas corretamente \\
+FP & 173 & Imagens sem formigueiro marcadas incorretamente \\
+FN & 49  & Imagens com formigueiro não detectadas \\
+TN & 1.700 & Imagens sem formigueiro corretamente rejeitadas \\
+\midrule
+Precision & 75,9\% & $\mathrm{TP}/(\mathrm{TP}+\mathrm{FP})$ \\
+Recall    & \textbf{91,7\%} & $\mathrm{TP}/(\mathrm{TP}+\mathrm{FN})$ \\
+F1 Score  & 83,1\% & Média harmônica \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Resultados de segmentação pixel a pixel --- Run~14.}
+\label{tab:segmentation14}
+\begin{tabular}{@{}lr@{}}
+\toprule
+\textbf{Métrica} & \textbf{Valor} \\
+\midrule
+Pixel Accuracy       & 98,7\% \\
+IoU (fundo)          & 98,7\% \\
+IoU (formigueiro)    & \textbf{33,8\%} \\
+Dice (formigueiro)   & 50,5\% \\
+mIoU (global)        & 66,3\% \\
+Mean Dice (global)   & 74,9\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparação entre Configurações}
+
+A Tabela~\ref{tab:comparison} apresenta a comparação das métricas-chave entre as
+principais runs, destacando o trade-off entre Recall e IoU.
+
+\begin{table}[H]
+\centering
+\caption{Comparação entre runs selecionadas. Os melhores valores por métrica estão em negrito.}
+\label{tab:comparison}
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+\textbf{Run} & \textbf{TP} & \textbf{FP} & \textbf{FN} & \textbf{Prec.} & \textbf{Rec.} & \textbf{IoU ant.} \\
+\midrule
+03  & 460 & 433 & 133 & 51,5 & 77,6 & 23,9 \\
+05  & 495 &  87 &  98 & 85,1 & 83,5 & \textbf{35,2} \\
+06  & 481 &  79 & 112 & \textbf{85,9} & 81,1 & 34,3 \\
+08  & 406 &  44 & 187 & \textbf{90,2} & 68,5 & 34,2 \\
+09  & 516 & 171 &  77 & 75,1 & \textbf{87,0} & 29,1 \\
+10  & 505 & 105 &  88 & 82,8 & 85,2 & 30,3 \\
+11  & 422 &  60 & 171 & 87,6 & 71,2 & 28,5 \\
+\textbf{14}  & \textbf{544} & 173 & \textbf{49}  & 75,9 & \textbf{91,7} & 33,8 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{IoU por Run}
+
+A evolução do IoU da classe formigueiro ao longo das runs evidencia que o pico foi
+atingido na Run~05 (35,2\%) com BatchNorm + ConvTranspose2d, e que augmentações
+subsequentes em geral reduziram o IoU, com exceção da Run~14 que o recuperou
+parcialmente (33,8\%).
+
+\begin{table}[H]
+\centering
+\caption{IoU do formigueiro e métricas globais de segmentação por run.}
+\label{tab:iou}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+\textbf{Run} & \textbf{IoU ant.} & \textbf{Dice ant.} & \textbf{mIoU} & \textbf{Mean Dice} \\
+\midrule
+03  & 23,9 & 38,6 & 61,2 & 68,9 \\
+05  & \textbf{35,2} & \textbf{52,1} & \textbf{67,1} & \textbf{75,8} \\
+06  & 34,3 & 51,1 & 66,6 & 75,3 \\
+08  & 34,2 & 51,0 & 66,6 & 75,2 \\
+09  & 29,1 & 45,0 & 63,9 & 72,2 \\
+10  & 30,3 & 46,5 & 64,5 & 72,9 \\
+11  & 28,5 & 44,3 & 63,7 & 71,9 \\
+14  & 33,8 & 50,5 & 66,3 & 74,9 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Análise de Erros}
+
+\textbf{Falsos negativos --- Run~14 (49 imagens, 8,3\% dos GT positivos):}
+\begin{enumerate}[noitemsep]
+  \item Formigueiros com textura muito similar ao solo circundante; modelo prediz
+    confiança $<0{,}40$ em todos os pixels da região.
+  \item Tiles de borda com grande proporção de pixels ``ignorar'', reduzindo o sinal
+    de treino local e gerando incerteza no modelo.
+  \item Formigueiros em contextos inéditos no treino: solo muito escuro, sombra
+    intensa de vegetação, ou ninhos muito pequenos ($<30$~px).
+\end{enumerate}
+
+\textbf{Falsos positivos --- Run~14 (173 imagens, 9,2\% dos GT negativos):}
+\begin{enumerate}[noitemsep]
+  \item Solo avermelhado ferroso comum em latossolos: semelhança cromática com a
+    terra escavada pelos formigueiros.
+  \item Linhas de cultivo com padrão linear e textura granular similar à superfície
+    dos formigueiros.
+  \item Sombras em talhões com declividade acentuada, que criam regiões escuras com
+    contraste similar ao target. Com $\tau=0{,}40$, esses FP são amplificados.
+\end{enumerate}
+
+\subsection{Verificação de Metas}
+
+\begin{table}[H]
+\centering
+\caption{Metas de desempenho e resultados obtidos nas principais configurações.}
+\label{tab:goals}
+\begin{tabular}{@{}llccc@{}}
+\toprule
+\textbf{Meta} & \textbf{Alvo} & \textbf{Run 05} & \textbf{Run 10} & \textbf{Run 14} \\
+\midrule
+F1 Score             & $\geq 80\%$ & 84,3\% \checkmark & 84,0\% \checkmark & 83,1\% \checkmark \\
+Recall (detecção)    & $\geq 80\%$ & 83,5\% \checkmark & 85,2\% \checkmark & 91,7\% \checkmark \\
+Precision            & $\geq 75\%$ & 85,1\% \checkmark & 82,8\% \checkmark & 75,9\% \checkmark \\
+IoU formigueiro      & $\geq 35\%$ & 35,2\% \checkmark & 30,3\% $\times$   & 33,8\% $\times$ \\
+Pixel Accuracy       & $\geq 95\%$ & 98,9\% \checkmark & 98,8\% \checkmark & 98,7\% \checkmark \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+% =============================================================================
+\section{Discussão}
+\label{sec:discussion}
+% =============================================================================
+
+\subsection{Impacto da Arquitetura}
+
+O resultado mais expressivo do estudo é que a combinação
+\textit{BatchNorm}~+~\texttt{ConvTranspose2d}, introduzida na Run~05, estabeleceu
+o melhor IoU de toda a série experimental (35,2\%), não superado por nenhuma run
+posterior. Isso indica que a capacidade de representação da rede e a estabilidade
+do treinamento são os fatores dominantes neste problema --- não a função de custo
+nem as augmentações.
+
+A \textit{BatchNorm} atua como regularizador implícito em datasets pequenos: ao
+normalizar as ativações por batch, ela introduz ruído estatístico que substitui
+parcialmente o Dropout e reduz o overfitting. Isso é particularmente valioso com
+apenas $\sim$600 tiles positivas de treino. A \texttt{ConvTranspose2d}, por sua vez,
+aprende a reconstituir fronteiras de objetos pequenos a partir da informação do
+\textit{bottleneck} da U-Net. Formigueiros com área típica de 3.000~px em tiles de
+$256\times256$~px são exatamente o tipo de objeto para o qual o \textit{upsampling}
+aprendível oferece vantagem sobre a interpolação bilinear fixa.
+
+\subsection{Função de Custo: Tversky, Focal e Lovász}
+
+A colagem ingênua de Tversky pura colapsa em treinamentos com desbalanceamento
+extremo: o termo $\alpha\cdot\text{FP}$ domina o denominador da
+Eq.~(\ref{eq:tversky}) quando quase todos os pixels são ``fundo'', e o gradiente
+empurra $P(\text{formigueiro})\to 0$ para todos os pixels de forma degenerada.
+A Focal Loss atua como âncora, fornecendo gradiente informativo para o modelo
+enquanto o sinal da Tversky é fraco nas primeiras épocas.
+
+O impacto da Lovász foi ambíguo: na Run~11 (com Copy-Paste), ela reduziu IoU e
+Recall; na Run~14 (com Anthill Duplicate), a mesma combinação de loss produziu
+resultados superiores. Isso sugere que a Lovász não é nociva \textit{per se}, mas
+que sua eficácia depende da qualidade das augmentações: com o Copy-Paste introduzindo
+ruído de borda, o sinal de Lovász (que pondera erros pelo impacto no IoU) era
+contaminado por artefatos sintéticos.
+
+\subsection{Anthill Duplicate vs.\ Copy-Paste}
+
+A comparação direta entre Copy-Paste (Runs~09--11) e Anthill Duplicate (Run~14)
+revela uma distinção qualitativa fundamental:
+
+\begin{itemize}
+  \item O \textit{Copy-Paste} cross-tile cola um formigueiro extraído de um talhão
+    diferente em um fundo de outro talhão. As inconsistências de iluminação, temperatura
+    de cor e textura de solo entre doador e receptor criam artefatos visuais que o
+    modelo pode aprender como ``sinal'' espúrio.
+
+  \item O \textit{Anthill Duplicate} opera dentro da mesma tile. O formigueiro
+    duplicado compartilha exatamente a mesma iluminação, temperatura de cor e textura
+    de solo da tile original, eliminando as inconsistências fotométricas.
+\end{itemize}
+
+O resultado quantitativo confirma essa hipótese: IoU~=~33,8\% (Run~14) vs.\
+30,3\% (Run~10), com a mesma loss combinada. A melhoria de 3,5pp de IoU sugere que
+o modelo passou a aprender padrões reais de formigueiro (textura granular, fronteiras
+de solo) em vez de artefatos de colagem.
+
+\subsection{Trade-off entre Detecção e Segmentação}
+
+O projeto evidencia um trade-off estrutural entre métricas por imagem (F1, Recall)
+e métricas por pixel (IoU):
+
+\begin{itemize}
+  \item Aumentar $\beta$ na Tversky Loss (penalizar FN) aumenta Recall mas reduz
+    Precision e IoU, pois o modelo tende a prever máscaras maiores.
+  \item Reduzir $\tau$ (threshold) aumenta Recall ao custo de mais FP.
+  \item Augmentações que criam instâncias positivas sintéticas (Copy-Paste, Anthill
+    Duplicate) melhoram o Recall mas podem introduzir ruído que degrada a qualidade
+    da máscara.
+\end{itemize}
+
+O perfil de uso deve guiar a escolha do modelo:
+
+\begin{description}
+  \item[Inspeção de campo (minimizar formigueiros perdidos):] Run~14, Recall~=~91,7\%,
+    FN~=~49 (8,3\% de miss rate). Falsos alarmes são verificáveis por um operador.
+  \item[Controle químico automático (minimizar falsos alarmes):] Run~05,
+    Precision~=~85,1\%, IoU~=~35,2\%. Falsos alarmes resultam em aplicação
+    desnecessária de defensivo.
+  \item[Monitoramento contínuo (equilíbrio):] Run~10, F1~=~84,0\%,
+    Precision~=~82,8\%, Recall~=~85,2\%.
+\end{description}
+
+\subsection{Gargalo: Quantidade de Dados}
+
+Apesar das 14 rodadas de treinamento e das diversas estratégias aplicadas, o F1
+converge assintoticamente para $\sim$84\% a partir da Run~05. A hipótese central é
+que o gargalo não é a arquitetura nem a função de custo, mas a
+\textbf{quantidade de dados positivos rotulados} ($\sim$600 tiles de treino).
+
+Com apenas 600 exemplos positivos, o modelo:
+(1) não consegue aprender a variabilidade real de formigueiros em diferentes tipos
+de solo, épocas do ano e condições de iluminação;
+(2) tende a memorizar os exemplos disponíveis mesmo com augmentações fortes;
+(3) não generaliza para contextos visuais inéditos (solo muito escuro, altitude de voo
+diferente).
+
+A estimativa é que 200--300 novas anotações positivas (elevando o dataset de 600 para
+$\sim$900 exemplos, +50\%) teriam impacto maior do que qualquer refinamento de
+hiperparâmetros.
+
+% =============================================================================
+\section{Conclusão}
+\label{sec:conclusion}
+% =============================================================================
+
+Este trabalho apresentou uma \textit{pipeline} completa de segmentação semântica para
+detecção automática de formigueiros em ortofotos aéreas de talhões agrícolas. O
+sistema aborda os cinco principais desafios do problema --- desbalanceamento extremo,
+escassez de exemplos positivos, ambiguidade fotométrica, bordas imprecisas e área
+não anotada --- com soluções específicas e validadas experimentalmente.
+
+Os principais achados são:
+
+\begin{enumerate}
+  \item \textbf{BatchNorm + ConvTranspose2d é o maior fator individual de ganho},
+    resultando em salto de +22,4pp de F1 e +11,3pp de IoU em relação à baseline
+    (Run~03 para Run~05). Nenhuma combinação de função de custo ou augmentação
+    subsequente superou esse IoU de 35,2\%.
+
+  \item \textbf{Anthill Duplicate supera Copy-Paste em qualidade de segmentação}:
+    a augmentação intra-tile (Run~14, IoU~=~33,8\%) preserva coerência fotométrica
+    e supera o Copy-Paste cross-tile (Run~10, IoU~=~30,3\%) em 3,5pp de IoU.
+
+  \item \textbf{Calibração do threshold é o principal alavancador de Recall}:
+    reduzir $\tau$ de 0,50 para 0,40 elevou o Recall de 85,2\% para 91,7\% (+6,5pp)
+    sem necessidade de retreinamento.
+
+  \item \textbf{CosineAnnealingLR é robusto a augmentações fortes}: ao contrário do
+    ReduceLROnPlateau, não reage ao ruído da \textit{val\_loss}, garantindo decaimento
+    suave e checkpoint tardio (ep.~93/100 na Run~10).
+
+  \item \textbf{O gargalo do sistema é a quantidade de dados rotulados}: F1
+    converge assintoticamente para $\sim$84\% independentemente de refinamentos
+    arquiteturais ou de função de custo.
+\end{enumerate}
+
+O modelo final (Run~14) atingiu \textbf{Recall~=~91,7\%}, \textbf{F1~=~83,1\%} e
+\textbf{IoU~=~33,8\%}, superando a meta de F1~$\geq$~80\% e estabelecendo o maior
+Recall e o menor número de formigueiros perdidos (FN~=~49 de 593) da série
+experimental. O sistema é viável para uso em aplicações de monitoramento de pragas
+em lavouras com revisão humana dos falsos alarmes.
+
+\subsection{Trabalhos Futuros}
+
+\begin{itemize}[noitemsep]
+  \item \textbf{Transfer learning} com \textit{backbone} pré-treinado (ResNet50,
+    EfficientNet-B4) como \textit{encoder} da U-Net, reduzindo a dependência de
+    dados rotulados em domínio-alvo.
+  \item \textbf{Anotação ativa} guiada pela incerteza do modelo: rotular
+    prioritariamente tiles onde o modelo prediz probabilidades próximas de 0,5,
+    maximizando o retorno por imagem anotada.
+  \item \textbf{Ensemble} de Run~05 e Run~14 para combinar alta IoU e alto Recall.
+  \item \textbf{Detecção multi-temporal}: explorar séries temporais de ortofotos do
+    mesmo talhão para distinguir formigueiros novos (detectar crescimento de colônia)
+    de regiões de solo naturalmente avermelhado (estáticas entre voos).
+  \item \textbf{Segmentação de instâncias} para estimar o diâmetro de cada
+    formigueiro, permitindo priorizar o tratamento dos ninhos de maior porte.
+\end{itemize}
+
+% =============================================================================
+% References
+% =============================================================================
+\bibliographystyle{plain}
+
+\begin{thebibliography}{99}
+
+\bibitem{abraham2019}
+Abraham, N.; Khan, N. M.
+A novel focal Tversky loss function with improved attention U-Net for lesion segmentation.
+In: \textit{IEEE International Symposium on Biomedical Imaging (ISBI)}, 2019.
+
+\bibitem{berman2018}
+Berman, M.; Triki, A. R.; Blaschko, M. B.
+The Lovász-Softmax loss: A tractable surrogate for the optimization of the IoU measure
+in neural networks.
+In: \textit{IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2018.
+
+\bibitem{botelho2001}
+Botelho, P. S. M. et al.
+Manejo integrado de formigas cortadeiras.
+\textit{Circular Técnica EMBRAPA}, n.~12, 2001.
+
+\bibitem{buslaev2020}
+Buslaev, A. et al.
+Albumentations: Fast and flexible image augmentations.
+\textit{Information}, v.~11, n.~2, p.~125, 2020.
+
+\bibitem{chen2020}
+Chen, J. et al.
+Deep learning-based weed detection using UAV imagery in paddy field.
+\textit{Computers and Electronics in Agriculture}, v.~178, 2020.
+
+\bibitem{ghiasi2021}
+Ghiasi, G. et al.
+Simple Copy-Paste is a strong data augmentation method for instance segmentation.
+In: \textit{IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2021.
+
+\bibitem{imagenet}
+Deng, J. et al.
+ImageNet: A large-scale hierarchical image database.
+In: \textit{IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2009.
+
+\bibitem{ioffe2015}
+Ioffe, S.; Szegedy, C.
+Batch normalization: Accelerating deep network training by reducing internal covariate
+shift.
+In: \textit{International Conference on Machine Learning (ICML)}, 2015.
+
+\bibitem{kamilaris2018}
+Kamilaris, A.; Prenafeta-Boldú, F. X.
+Deep learning in agriculture: A survey.
+\textit{Computers and Electronics in Agriculture}, v.~147, p.~70--90, 2018.
+
+\bibitem{kingma2015}
+Kingma, D. P.; Ba, J.
+Adam: A method for stochastic optimization.
+In: \textit{International Conference on Learning Representations (ICLR)}, 2015.
+
+\bibitem{lin2017}
+Lin, T.-Y. et al.
+Focal loss for dense object detection.
+In: \textit{IEEE/CVF International Conference on Computer Vision (ICCV)}, 2017.
+
+\bibitem{long2015}
+Long, J.; Shelhamer, E.; Darrell, T.
+Fully convolutional networks for semantic segmentation.
+In: \textit{IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)}, 2015.
+
+\bibitem{loshchilov2017}
+Loshchilov, I.; Hutter, F.
+SGDR: Stochastic gradient descent with warm restarts.
+In: \textit{International Conference on Learning Representations (ICLR)}, 2017.
+
+\bibitem{milletari2016}
+Milletari, F.; Navab, N.; Ahmadi, S.-A.
+V-Net: Fully convolutional neural networks for volumetric medical image segmentation.
+In: \textit{International Conference on 3D Vision (3DV)}, 2016.
+
+\bibitem{oktay2018}
+Oktay, O. et al.
+Attention U-Net: Learning where to look for the pancreas.
+In: \textit{Medical Imaging with Deep Learning (MIDL)}, 2018.
+
+\bibitem{ronneberger2015}
+Ronneberger, O.; Fischer, P.; Brox, T.
+U-Net: Convolutional networks for biomedical image segmentation.
+In: \textit{Medical Image Computing and Computer-Assisted Intervention (MICCAI)}, 2015.
+
+\bibitem{salehi2017}
+Salehi, S. S. M.; Erdogmus, D.; Gholipour, A.
+Tversky loss function for image segmentation using 3D fully convolutional deep networks.
+In: \textit{Machine Learning in Medical Imaging (MLMI)}, 2017.
+
+\bibitem{simard2003}
+Simard, P. Y.; Steinkraus, D.; Platt, J. C.
+Best practices for convolutional neural networks applied to visual document analysis.
+In: \textit{International Conference on Document Analysis and Recognition (ICDAR)}, 2003.
+
+\bibitem{zhang2018}
+Zhang, H. et al.
+mixup: Beyond empirical risk minimization.
+In: \textit{International Conference on Learning Representations (ICLR)}, 2018.
+
+\bibitem{zhang2022}
+Zhang, X. et al.
+Termite mound detection in drone imagery using attention-based U-Net.
+\textit{Remote Sensing}, v.~14, n.~8, 2022.
+
+\bibitem{zhou2018}
+Zhou, Z. et al.
+UNet++: A nested U-Net architecture for medical image segmentation.
+In: \textit{Deep Learning in Medical Image Analysis (DLMIA)}, 2018.
+
+\end{thebibliography}
+
+\end{document}

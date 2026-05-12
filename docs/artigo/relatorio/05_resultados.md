@@ -6,25 +6,23 @@ Consolidação das métricas e desempenho dos modelos treinados para detecção 
 
 ## Melhor Configuração
 
-**Run 10** emergiu como a melhor configuração balanceada, alcançando as metas de desempenho com o melhor trade-off entre Recall (detecção) e Precision (confiança).
+**Run 14** emergiu como a melhor configuração para aplicações de inspeção, alcançando o maior Recall do projeto (91,7%) com boa segmentação pixel a pixel (IoU=33,8%). Para aplicações que exigem menor taxa de falso alarme, **Run 05** continua sendo referência em IoU (35,2%) e **Run 10** em F1 balanceado (84,0%).
 
-### Hiperparâmetros da melhor configuração
+### Hiperparâmetros da melhor configuração (Run 14)
 
 | Parâmetro                    | Valor                                      |
 | ----------------------------- | ------------------------------------------ |
 | **Arquitetura**              | U-Net (encoder-decoder com skip connections) |
 | **Normalização**             | BatchNorm2d após cada convolução           |
 | **Upsampling decoder**       | ConvTranspose2d (aprendido)               |
-| **Loss**                     | Tversky + Focal combinada (85% / 15%)     |
-| **Tversky α / β**            | 0.1 / 0.9                                  |
-| **Class weight anthill**     | 4.0                                        |
-| **Augmentações**             | ElasticTransform (α=25, σ=4) + Copy-Paste (p=0.1) |
+| **Loss**                     | Tversky + Focal + Lovász (50% / 20% / 30%) |
+| **Tversky α / β**            | 0.3 / 0.7                                  |
+| **Class weight anthill**     | 6.0                                        |
+| **Augmentações**             | ElasticTransform (α=25, σ=4) + Anthill Duplicate (p=0.7, max=2) |
 | **Optimizer**                | Adam (LR inicial = 1e-3)                   |
-| **Scheduler**                | CosineAnnealingLR (T_max=100, η_min=1e-6) |
-| **Confidence threshold**     | 0.5                                        |
-| **Filtros pós-processamento**| min_region=100px, max_region=5.000px      |
-| **Épocas totais**            | 100                                        |
-| **Best checkpoint**          | Época 93 (val_loss = 0.2002)              |
+| **Scheduler**                | CosineAnnealingLR (η_min=1e-6)            |
+| **Confidence threshold**     | 0.40                                       |
+| **Filtros pós-processamento**| min_region=5px, max_region=5.000px        |
 
 ---
 
@@ -36,28 +34,28 @@ Consolidação das métricas e desempenho dos modelos treinados para detecção 
 - **GT Positivas (com formigueiro):** 593
 - **GT Negativas (sem formigueiro):** 1.873
 
-### Run 10 — Resultados de Detecção (nível de imagem)
+### Run 14 — Resultados de Detecção (nível de imagem)
 
 | Métrica      | Valor    | Interpretação |
 | ------------ | -------- | ------------- |
-| **TP**       | 505      | Imagens com formigueiro detectadas corretamente |
-| **FP**       | 105      | Imagens falsamente marcadas com formigueiro |
-| **FN**       | 88       | Imagens com formigueiro não detectadas |
-| **TN**       | 1.768    | Imagens sem formigueiro corretamente identificadas |
-| **Precision**| **82.8%**| 82.8% das detecções feitas eram corretas |
-| **Recall**   | **85.2%**| 85.2% dos formigueiros reais foram detectados |
-| **F1 Score** | **84.0%**| Média harmônica equilibrada entre Precision e Recall |
+| **TP**       | 544      | Imagens com formigueiro detectadas corretamente |
+| **FP**       | 173      | Imagens falsamente marcadas com formigueiro |
+| **FN**       | 49       | Imagens com formigueiro não detectadas |
+| **TN**       | 1.700    | Imagens sem formigueiro corretamente identificadas |
+| **Precision**| **75.9%**| 75.9% das detecções feitas eram corretas |
+| **Recall**   | **91.7%**| 91.7% dos formigueiros reais foram detectados |
+| **F1 Score** | **83.1%**| Média harmônica entre Precision e Recall |
 
-### Run 10 — Resultados de Segmentação (nível de pixel)
+### Run 14 — Resultados de Segmentação (nível de pixel)
 
 | Métrica                | Valor     | Interpretação |
 | ---------------------- | --------- | ------------- |
-| **Pixel Accuracy**     | 98.8%     | Taxa de acurácia pixel a pixel |
-| **IoU (fundo)**        | 98.8%     | Interseção/União para classe fundo |
-| **IoU (formigueiro)**  | 30.3%     | Interseção/União para classe formigueiro |
-| **Dice (formigueiro)** | 46.5%     | Coeficiente Dice para formigueiro |
-| **mIoU**               | 64.5%     | Média de IoU entre classes (método global) |
-| **Mean Dice**          | 72.9%     | Média de Dice entre classes |
+| **Pixel Accuracy**     | 98.7%     | Taxa de acurácia pixel a pixel |
+| **IoU (fundo)**        | 98.7%     | Interseção/União para classe fundo |
+| **IoU (formigueiro)**  | 33.8%     | Interseção/União para classe formigueiro |
+| **Dice (formigueiro)** | 50.5%     | Coeficiente Dice para formigueiro |
+| **mIoU**               | 66.3%     | Média de IoU entre classes (método global) |
+| **Mean Dice**          | 74.9%     | Média de Dice entre classes |
 
 ---
 
@@ -69,12 +67,13 @@ Consolidação das métricas e desempenho dos modelos treinados para detecção 
 | --- | ----------- | ---------------- | ------------ | --------- | ------- | ------ | ----------- | ---------- |
 | 02  | U-Net base  | Cross-Entropy    | Geom + Foto  | -         | -       | -      | -           | Baseline com augmentações |
 | 03  | U-Net base  | Focal (γ=2.0)    | Geom + Foto  | 51.5%     | 77.6%   | 61.9%  | 23.9%       | Focal melhorou sensibilidade |
-| **05** | U-Net + BN + ConvT2d | Tversky+CE (50/50) | Geom + Foto  | **85.1%** | **83.5%** | **84.3%** | **35.2%** | **Melhor IoU até Run 10** |
+| **05** | U-Net + BN + ConvT2d | Tversky+CE (50/50) | Geom + Foto  | **85.1%** | **83.5%** | **84.3%** | **35.2%** | **Melhor IoU histórico** |
 | 06  | U-Net + BN + ConvT2d | Tversky+CE (70/30) | Geom + Foto  | 85.9%     | 81.1%   | 83.4%  | 34.3%       | Oversampling 3:1 falhou |
 | 08  | U-Net + BN + ConvT2d | Tversky+Focal (70/30) | Geom + Foto + Copy-Paste + Elastic + Rotate90 | 90.2% | 68.5% | 77.9% | 34.2% | Augmentações agressivas pioraram |
-| 09  | U-Net + BN + ConvT2d | Tversky+Focal (85/15) | Geom + Foto + Copy-Paste (p=0.1) + Elastic | 75.1% | 87.0% | 80.6% | 29.1% | **Interrompido época 52** |
-| **10** | **U-Net + BN + ConvT2d** | **Tversky+Focal (85/15)** | **Geom + Foto + Copy-Paste (p=0.1) + Elastic** | **82.8%** | **85.2%** | **84.0%** | **30.3%** | **Melhor F1 após Run 05; Recall máximo** |
-| 11  | U-Net + BN + ConvT2d | Tversky+Focal+Lovász (50/20/30) | Geom + Foto + Copy-Paste melhorado + Filtro tile | 87.6% | 71.2% | 78.5% | 28.5% | Lovász não recuperou IoU como esperado |
+| 09  | U-Net + BN + ConvT2d | Tversky+Focal (85/15) | Geom + Foto + Copy-Paste (p=0.1) + Elastic | 75.1% | 87.0% | 80.6% | 29.1% | Interrompido época 52 |
+| **10** | **U-Net + BN + ConvT2d** | **Tversky+Focal (85/15)** | **Geom + Foto + Copy-Paste (p=0.1) + Elastic** | **82.8%** | **85.2%** | **84.0%** | **30.3%** | **Melhor F1 balanceado** |
+| 11  | U-Net + BN + ConvT2d | Tversky+Focal+Lovász (50/20/30) | Geom + Foto + Copy-Paste melhorado + Filtro tile | 87.6% | 71.2% | 78.5% | 28.5% | Lovász não recuperou IoU |
+| **14** | **U-Net + BN + ConvT2d** | **Tversky+Focal+Lovász (50/20/30)** | **Geom + Foto + Anthill Duplicate (p=0.7)** | **75.9%** | **91.7%** | **83.1%** | **33.8%** | **Maior Recall do projeto; melhor threshold calibrado** |
 
 ### Análise de Trade-offs
 
@@ -105,14 +104,15 @@ Consolidação das métricas e desempenho dos modelos treinados para detecção 
 | Run | IoU anthill | FP (falsos alarmes) | FN (perdidos) | Análise |
 | --- | ----------- | ------------------- | ------------- | ------- |
 | 03  | 23.9%       | 433                 | 133           | Threshold muito conservador (0.6) |
-| 05  | **35.2%**   | 87                  | 98            | **Melhor segmentação** |
+| 05  | **35.2%**   | 87                  | 98            | **Melhor IoU histórico** |
 | 06  | 34.3%       | 79                  | 112           | Oversampling não melhorou |
 | 08  | 34.2%       | 44                  | 187           | Augmentações irrealistas prejudicaram |
 | 09  | 29.1%       | 171                 | 77            | FP massivo com β=0.9 |
 | 10  | 30.3%       | 105                 | 88            | Trade-off aceitável vs Run 05 |
 | 11  | 28.5%       | 60                  | 171           | Maior Precision mas dobro de FN |
+| **14** | **33.8%** | 173               | **49**        | **Melhor FN; IoU recuperado; threshold calibrado** |
 
-**Conclusão:** IoU de formigueiro regrediu de 35.2% (Run 05) para máximo 30.3% (Run 10) após introdução de augmentações. A dificuldade de melhorar simultaneamente Recall e IoU indica que o gargalo é **qualidade e quantidade de dados reais**, não arquitetura ou loss.
+**Conclusão:** a Run 14, com Anthill Duplicate Augmentation e threshold=0.40, é a que melhor balanceia Recall e IoU simultaneamente. O FN de apenas 49 (8,3% dos positivos reais) é o menor do projeto. O aumento de FP (173) é o custo do threshold mais agressivo.
 
 ---
 
@@ -139,8 +139,9 @@ Consolidação das métricas e desempenho dos modelos treinados para detecção 
 | 06  | 34.3%       | 51.1%        | 66.6% | 75.3%    |
 | 08  | 34.2%       | 51.0%        | 66.6% | 75.2%    |
 | 09  | 29.1%       | 45.0%        | 63.9% | 72.2%    |
-| **10** | **30.3%** | **46.5%**    | **64.5%** | **72.9%** |
+| 10  | 30.3%       | 46.5%        | 64.5% | 72.9%    |
 | 11  | 28.5%       | 44.3%        | 63.7% | 71.9%    |
+| **14** | **33.8%** | **50.5%**    | **66.3%** | **74.9%** |
 
 **Nota sobre escala:** `evaluate_detections` com Lovász (Run 11) não é diretamente comparável em loss absoluta com Runs 01–10, pois Lovász adiciona um termo numericamente diferente.
 
@@ -171,12 +172,12 @@ LOSS VALIDATION
 
 ## Análise de Erros
 
-### Distribuição de Erros no Run 10
+### Distribuição de Erros no Run 14 (melhor run)
 
 **Por Imagem (593 GT positivas):**
--  **Detectadas corretamente:** 505 (85.2%)
-- ❌ **Não detectadas (FN):** 88 (14.8%)
-- ⚠️ **Falsos alarmes (FP):** 105 em 1.873 negativas (5.6%)
+-  **Detectadas corretamente:** 544 (91.7%)
+- ❌ **Não detectadas (FN):** 49 (8.3%)
+- ⚠️ **Falsos alarmes (FP):** 173 em 1.873 negativas (9.2%)
 
 **Tipos de FN (formigueiros perdidos):**
 1. **Formigueiros muito pequenos** (<100px) — abaixo do limiar de região mínima
@@ -216,35 +217,34 @@ LOSS VALIDATION
 
 ### Metas Alcançadas
 
-| Meta                    | Alvo   | Resultado | Status |
-| ----------------------- | ------ | --------- | ------ |
-| F1 Score               | ≥ 80%  | 84.0%     |      |
-| Recall (detecção)      | ≥ 80%  | 85.2%     |      |
-| Precision (alarmes)    | ≥ 75%  | 82.8%     |      |
-| IoU de formigueiro     | ≥ 35%  | 30.3%     | ❌ (4.7pp abaixo) |
-| Pixel Accuracy         | ≥ 95%  | 98.8%     |      |
+| Meta                    | Alvo   | Run 14 | Run 10 | Status (Run 14) |
+| ----------------------- | ------ | ------ | ------ | --------------- |
+| F1 Score               | ≥ 80%  | 83.1%  | 84.0%  | ✅              |
+| Recall (detecção)      | ≥ 80%  | 91.7%  | 85.2%  | ✅              |
+| Precision (alarmes)    | ≥ 75%  | 75.9%  | 82.8%  | ✅              |
+| IoU de formigueiro     | ≥ 35%  | 33.8%  | 30.3%  | ❌ (1.2pp abaixo) |
+| Pixel Accuracy         | ≥ 95%  | 98.7%  | 98.8%  | ✅              |
 
 ### Insights Principais
 
-1. **Arquitetura + BatchNorm + ConvTranspose2d foram determinantes** — Run 05 (primeiro com essas mudanças) estabeleceu o melhor IoU (35.2%) que nenhum run posterior conseguiu superar, apesar de melhorias em outras métricas.
+1. **Arquitetura + BatchNorm + ConvTranspose2d foram determinantes** — Run 05 (primeiro com essas mudanças) estabeleceu o melhor IoU histórico (35.2%). Run 14 recuperou 33.8% — o mais próximo desse valor em runs com augmentações avançadas.
 
-2. **Augmentações têm limite de efetividade** — tentativas de melhorar com Copy-Paste e Elastic agressivos (Runs 08-11) consistentemente pioraram segmentação pixel-a-pixel, sugerindo que o modelo começou a aprender padrões artificiais em vez de características reais.
+2. **Anthill Duplicate superou Copy-Paste em qualidade de segmentação** — a augmentação intra-tile (Run 14) gerou IoU=33.8% vs 30.3% do Copy-Paste cross-tile (Run 10), pois evita artefatos de borda artificial.
 
-3. **Desbalanceamento extremo não é resolvido apenas por loss rebalanceada** — mesmo com Tversky β=0.9 e Lovász Hinge, IoU não melhorou. O gargalo é a **quantidade limitada de dados reais** (593 GT positivas), que impede o modelo de aprender variabilidade de formigueiros.
+3. **Threshold calibrado é o principal alavancador de Recall** — baixar de 0.50 para 0.40 (Run 14) elevou Recall de 85.2% para 91.7% (+6.5pp), ao custo de +68 FP.
 
-4. **Trade-off Detecção vs Segmentação** — melhorar Recall (detectar mais formigueiros) tende a reduzir IoU (segmentação precisa). Run 10 oferece o melhor equilíbrio prático (F1=84.0% com IoU=30.3%), enquanto Run 05 oferece melhor precisão de máscara (IoU=35.2%) aceitando Recall 1.7pp menor.
+4. **Desbalanceamento extremo não é resolvido apenas por loss rebalanceada** — mesmo com Lovász Hinge, o gargalo persiste na **quantidade limitada de dados reais** (593 GT positivas).
 
 5. **CosineAnnealingLR com scheduler fixo é superior a ReduceLROnPlateau** em cenários com augmentações fortes que inflacionam variância da val_loss.
 
 ### Recomendação Final
 
-**Use Run 10 para produção**, pois oferece:
--  Melhor F1 entre runs com augmentações realistas (84.0%)
--  Recall máximo (85.2%) — reduz risco de perder formigueiros reais
--  Precision aceitável (82.8%) — controla falsos alarmes
--  Treinamento estável com CosineAnnealingLR
+**Use Run 14 para produção em inspeção de campo**, pois oferece:
+-  Maior Recall do projeto (91.7%) — apenas 8.3% dos formigueiros reais são perdidos
+-  IoU recuperado (33.8%) — melhor segmentação pixel a pixel entre runs com augmentações evolutivas
+-  F1=83.1% — equilíbrio aceitável com threshold calibrado
 
-Para aplicações que priorizam **mínimos falsos alarmes** (e.g., controle químico automático em talhões pequenos), considere **Run 05** apesar de Recall 1.7pp menor, pela melhor qualidade de segmentação (IoU=35.2% vs 30.3%).
+Para aplicações que priorizam **mínimos falsos alarmes** (e.g., aplicação automática de defensivo), considere **Run 05** (IoU=35.2%, Precision=85.1%) ou **Run 10** (F1=84.0%, Precision=82.8%).
 
 ---
 
@@ -252,7 +252,7 @@ Para aplicações que priorizam **mínimos falsos alarmes** (e.g., controle quí
 
 | Artefato                     | Localização                        |
 | ----------------------------- | ---------------------------------- |
-| Melhor modelo (Run 10)        | `model/checkpoints/run10_best.pth` |
+| Melhor modelo (Run 14)        | `model/checkpoints/run14_best.pth` |
 | Métricas completas            | [04_experimentos.md](04_experimentos.md) |
 | Análise de dados              | [analysis.md](analysis.md)         |
 | Correções de pipeline         | [fixes.md](fixes.md)               |

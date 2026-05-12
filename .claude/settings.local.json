@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\rodol\\\\OneDrive\\\\Área de Trabalho\\\\Faculdade 2025\\\\tcc\\\\docs\" -Recurse -Force)",
+      "Bash(Select-Object FullName, PSIsContainer)",
+      "Read(//c/Users/rodol/OneDrive/�rea de Trabalho/Faculdade 2025/tcc/**)"
+    ]
+  }
+}
