@@ -1,0 +1,25 @@
+services:
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: unet-segmentation-pipeline
+    volumes:
+      # -- Hot-reload: local code changes are immediately reflected --
+      - .:/app
+    env_file:
+      - .env
+    environment:
+      - UNET_DEBUG=false
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    restart: "no"
+
+    # -- GPU passthrough via NVIDIA Container Toolkit -----------------
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

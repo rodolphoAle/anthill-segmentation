@@ -1,0 +1,45 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+.github/*
+*/__pycache__/
+*/.venv/
+*.pyc
+*/venv/*
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files
+.env
+
+# secrets / credentials (never commit real ones)
+/credentials.json
+service-account*.json
+*.pem
+*.key
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+/logs/*
+/validation_results/*
+wtf.json
+**/credentials.json
+
+*.pth
+*.rar
+data*
+output*
+apresentacao*
