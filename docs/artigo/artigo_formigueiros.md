@@ -1,11 +1,5 @@
 # Detecção de Formigueiros em Ortofotos Aéreas por Segmentação Semântica com U-Net
 
-**Rodolpho Alexandre**  
-Curso de Ciência da Computação — [Instituição]  
-rodolphosilva.ale@gmail.com
-
----
-
 ## Resumo
 
 Este trabalho apresenta um sistema de segmentação semântica para detecção automática de formigueiros em ortofotos aéreas de talhões agrícolas. O problema é caracterizado por desbalanceamento extremo de classes, com formigueiros ocupando menos de 1% dos pixels totais, e por similaridade visual entre a classe-alvo e o solo avermelhado ao redor. Propõe-se uma pipeline baseada em U-Net com normalização por lote (Batch Normalization), upsampling aprendível (ConvTranspose2d) e função de custo combinada Tversky + Focal, complementada por augmentação via Copy-Paste e Elastic Transform. Após 11 rodadas de experimentos sistemáticos, o melhor modelo alcançou **F1 = 84,0%**, **Recall = 85,2%** e **Precision = 82,8%** na detecção por imagem, e **IoU = 30,3%** na segmentação pixel a pixel sobre um conjunto de validação com 2.466 imagens. Os resultados demonstram que a combinação de funções de custo especializadas e augmentação direcionada supera abordagens tradicionais neste domínio de aplicação.
